@@ -10,9 +10,11 @@ allowed-tools: Task, SendMessage, TeamCreate, TeamDelete, TaskCreate, TaskUpdate
 
 - [Archetype Index](#archetype-index)
 - [Phase 0: Problem Intake](#phase-0-problem-intake)
-- [Phase 0.5: Perspective Generation](#phase-05-perspective-generation)
-- [Phase 0.6: Ontology Scope Mapping](#phase-06-ontology-scope-mapping)
-- [Phase 1: Team Formation](#phase-1-team-formation)
+- [Phase 0.5: Team Creation & Seed Analysis](#phase-05-team-creation--seed-analysis)
+- [Phase 0.6: Perspective Approval](#phase-06-perspective-approval)
+- [Phase 0.7: Ontology Scope Mapping](#phase-07-ontology-scope-mapping)
+- [Phase 0.8: Context & State Files](#phase-08-context--state-files)
+- [Phase 1: Analyst Task Creation & Spawn](#phase-1-analyst-task-creation--spawn)
 - [Phase 2: Analysis Execution](#phase-2-analysis-execution)
 - [Phase 2.5: Conditional Tribunal](#phase-25-conditional-tribunal)
 - [Phase 3: Synthesis & Report](#phase-3-synthesis--report)
@@ -22,20 +24,18 @@ Prompt templates and report template are in subdirectories relative to this file
 
 ## Artifact Persistence
 
-MUST persist phase outputs to `.omc/state/incident-{short-id}/` (created in Phase 0.5, Step 0.5.5). On deeper investigation re-entry, agents MUST `Read` artifact files — do NOT rely solely on prompt context.
+MUST persist phase outputs to `.omc/state/incident-{short-id}/` (created in Phase 0, Step 0.4). On deeper investigation re-entry, agents MUST `Read` artifact files — do NOT rely solely on prompt context.
 
 | File | Written | Read By |
 |------|---------|---------|
-| `setup-complete.md` | Setup agent (last) | Orchestrator (before reading other files) |
-| `seed-analysis.md` | Setup agent (internal) | Setup agent only |
-| `perspectives.md` | Setup agent | Orchestrator (Phase 1) |
-| `context.md` | Setup agent | All agents |
+| `perspectives.md` | Orchestrator (Phase 0.6) | All agents |
+| `context.md` | Orchestrator (Phase 0.8) | All agents |
 | `analyst-findings.md` | Phase 2 exit | DA |
 | `da-evaluation.md` | Phase 2.4 exit (DA) | Phase 3 synthesis |
 | `prior-iterations.md` | Each re-entry (append) | DA (cumulative history) |
-| `ontology-catalog.md` | Setup agent | All agents |
-| `ontology-scope-analyst.md` | Setup agent | All analysts |
-| `ontology-scope-da.md` | Setup agent | DA |
+| `ontology-catalog.md` | Orchestrator (Phase 0.7) | All agents |
+| `ontology-scope-analyst.md` | Orchestrator (Phase 0.7) | All analysts |
+| `ontology-scope-da.md` | Orchestrator (Phase 0.7) | DA |
 
 ## Prerequisite: Agent Team Mode (HARD GATE)
 
@@ -72,93 +72,194 @@ Team size: 3 min (DA + 2) — 6 max (DA + 5). Devil's Advocate is ALWAYS present
 
 ## Phase 0: Problem Intake
 
-> → Delegated to setup agent. Original steps: `docs/delegated-phases.md` § Phase 0.
+Orchestrator handles intake directly — NOT delegated. Reference steps: `docs/delegated-phases.md` § Phase 0.
 
----
+### Step 0.1: Collect Incident
 
-## Phase 0.5: Perspective Generation
+If the user provided an incident description via `$ARGUMENTS`, use it directly. Otherwise, ask via `AskUserQuestion` (header: "Incident"): "Please describe the incident: What symptoms? Which systems affected? Business impact?"
 
-> → Delegated to setup agent. Original steps: `docs/delegated-phases.md` § Phase 0.5.
-> Exception: Step 0.5.5 (Session ID generation) remains in orchestrator.
+### Step 0.2: Severity & Context
 
-### Step 0.5.5: Generate Session ID and State Directory
+`AskUserQuestion` (3 questions):
 
-Generate `{short-id}`: `Bash(uuidgen | tr '[:upper:]' '[:lower:]' | cut -c1-8)` (e.g., `a3f7b2c1`). Generate ONCE and reuse throughout all phases.
+1. Severity → "SEV1 — Full outage" / "SEV2 — Partial degradation" / "SEV3 — Limited impact" / "SEV4 — Minor"
+2. Status → "Active — Ongoing" / "Mitigated — Temp fix" / "Resolved — Postmortem" / "Recurring — Patterns"
+3. Evidence (multiSelect) → "Logs & errors" / "Metrics/dashboards" / "Code changes" / "All of the above"
+
+### Step 0.3: Fast Track Check
+
+| Condition | Track | Action |
+|-----------|-------|--------|
+| SEV1 OR Active | **FAST_TRACK** | Lock 4 core archetypes (Timeline + Root Cause + Systems + Impact) + DA. Skip Phase 0.5 seed-analyst and Phase 0.6 perspective approval. |
+| Otherwise | **PERSPECTIVE_TRACK** | Continue with seed-analyst for dynamic perspective generation. |
+
+### Step 0.4: Generate Session ID and State Directory
+
+Generate `{short-id}`: `Bash(uuidgen | tr '[:upper:]' '[:lower:]' | cut -c1-8)`. Generate ONCE and reuse throughout all phases.
 
 Create state directory: `Bash(mkdir -p .omc/state/incident-{short-id})`
 
-**This step MUST execute BEFORE spawning the setup agent** so that `{short-id}` and `{STATE_DIR}` are available as spawn parameters.
+### Phase 0 Exit Gate
+
+MUST NOT proceed until ALL documented:
+
+- [ ] Incident description collected (symptoms, affected systems, impact)
+- [ ] Severity and status determined
+- [ ] Evidence types identified
+- [ ] Track determined (FAST_TRACK or PERSPECTIVE_TRACK)
+- [ ] `{short-id}` generated and state directory created
 
 ---
 
-## Phase 0.6: Ontology Scope Mapping
+## Phase 0.5: Team Creation & Seed Analysis
 
-> → Delegated to setup agent. Original steps: `docs/delegated-phases.md` § Phase 0.6.
-
-### Setup Agent Invocation
-
-**Step A: Spawn setup agent**
-
-```
-Task(
-  subagent_type="oh-my-claudecode:deep-executor",
-  model="opus",
-  prompt="Read and execute skills/shared/setup-agent.md with:
-    {SKILL_NAME} = 'incident'
-    {STATE_DIR} = '.omc/state/incident-{short-id}'
-    {SHORT_ID} = '{short-id}'
-    {INPUT_CONTEXT} = '{user arguments / conversation context}'
-    {CALLER_CONTEXT} = 'incident analysis'
-    {AVAILABILITY_MODE} = 'optional'
-    {SKILL_PATH} = '{absolute path to skills/incident-v2/SKILL.md}'
-    {FAST_TRACK_ELIGIBLE} = true"
-)
-```
-
-NO `team_name` — runs in isolated session. Blocks until setup agent completes and returns.
-
-**Step B: Verify setup completion**
-
-- Read `{STATE_DIR}/setup-complete.md` — verify it exists and check Track field
-- If missing → error: "Setup agent failed. Please retry."
-
-**Step C: Read setup outputs**
-
-- Read `perspectives.md` → check Track field
-- If `FAST_TRACK`: proceed directly to Phase 1 with locked 4-core roster
-- If `PERSPECTIVE_TRACK`: proceed with approved roster
-
-### Setup Exit Gate
-
-MUST NOT proceed until:
-
-- [ ] `setup-complete.md` sentinel verified
-- [ ] `perspectives.md` parsed with valid roster
-- [ ] Track field determined (FAST_TRACK or PERSPECTIVE_TRACK)
-- [ ] Ontology scope mapping complete (check for `ontology-scope-analyst.md`) or explicitly skipped/deferred
-
----
-
-## Phase 1: Team Formation
-
-### Step 1.1
-
-`{short-id}` and state directory already exist from Step 0.5.5.
+### Step 0.5.1: Create Team
 
 ```
 TeamCreate(team_name: "incident-analysis-{short-id}", description: "Incident: {summary}")
 ```
 
-Phase 0 incident context is already available in `.omc/state/incident-{short-id}/context.md` (written by setup agent). Read it for team context reference.
+### Step 0.5.2: Spawn Seed Analyst
 
-### Step 1.2
+**Skip on FAST_TRACK** — proceed directly to Phase 0.6 with locked 4-core roster.
+
+Read `prompts/seed-analyst.md` (relative to this SKILL.md).
+
+Create seed-analyst task via `TaskCreate`, pre-assign owner via `TaskUpdate(owner="seed-analyst")`, then spawn:
+
+```
+Task(
+  subagent_type="oh-my-claudecode:architect",
+  name="seed-analyst",
+  team_name="incident-analysis-{short-id}",
+  model="opus",
+  run_in_background=true,
+  prompt="{worker preamble + seed-analyst prompt with placeholders replaced}"
+)
+```
+
+→ Apply worker preamble from `../shared/worker-preamble.md` with:
+- `{TEAM_NAME}` = `"incident-analysis-{short-id}"`
+- `{WORKER_NAME}` = `"seed-analyst"`
+- `{WORK_ACTION}` = `"Actively investigate the incident using available tools (Grep, Read, Bash, MCP). Evaluate incident dimensions, map to archetype candidates, and generate perspective recommendations. Report findings via SendMessage."`
+
+Placeholder replacements in seed-analyst prompt:
+- `{INCIDENT_DESCRIPTION}` → Phase 0 incident description
+- `{SEVERITY}` → Phase 0 severity
+- `{STATUS}` → Phase 0 status
+- `{EVIDENCE_TYPES}` → Phase 0 evidence types
+
+### Step 0.5.3: Receive Seed Analyst Results
+
+Wait for seed-analyst to send results via `SendMessage`. The message contains:
+- **Research Summary**: evidence discovered, files examined, MCP queries, recent changes
+- **Dimension Evaluation**: domain, failure type, evidence, complexity, recurrence
+- **Perspectives**: 3-5 perspective candidates with ID, Name, Scope, Key Questions, Model, Agent Type, Rationale
+
+### Step 0.5.4: Shutdown Seed Analyst
+
+After receiving results: `SendMessage(type: "shutdown_request", recipient: "seed-analyst", content: "Seed analysis complete.")`.
+
+### Phase 0.5 Exit Gate
+
+MUST NOT proceed until:
+
+- [ ] Team created
+- [ ] Seed-analyst results received (or FAST_TRACK with 4-core roster locked)
+- [ ] Seed-analyst shut down (or FAST_TRACK)
+
+---
+
+## Phase 0.6: Perspective Approval
+
+**Skip on FAST_TRACK** — perspectives already locked. Write locked roster to `perspectives.md` and proceed.
+
+### Step 0.6.1: Present Perspectives
+
+`AskUserQuestion` (header: "Perspectives", question: "I recommend these {N} perspectives for analysis. How to proceed?", options: "Proceed" / "Add perspective" / "Remove perspective" / "Modify perspective")
+
+Include seed-analyst's research summary for user context.
+
+### Step 0.6.2: Iterate Until Approved
+
+Repeat until user selects "Proceed". Warn if <2 dynamic perspectives.
+
+### Step 0.6.3: Write Perspectives
+
+Write locked roster to `.omc/state/incident-{short-id}/perspectives.md`:
+
+```markdown
+# Perspectives — Locked Roster
+
+## Severity
+{SEV1-4}
+
+## Status
+{Active/Mitigated/Resolved/Recurring}
+
+## Track
+{FAST_TRACK / PERSPECTIVE_TRACK}
+
+## Perspectives
+
+### {perspective-id}
+- **Name:** {name}
+- **Scope:** {scope}
+- **Key Questions:**
+  1. {question}
+  2. {question}
+- **Model:** {model}
+- **Agent Type:** {agent type}
+- **Rationale:** {rationale}
+```
+
+---
+
+## Phase 0.7: Ontology Scope Mapping
+
+→ Read and execute `../shared/ontology-scope-mapping.md` with:
+- `{AVAILABILITY_MODE}` = `optional`
+- `{CALLER_CONTEXT}` = `"incident analysis"`
+- `{STATE_DIR}` = `.omc/state/incident-{short-id}`
+
+If `ONTOLOGY_AVAILABLE=false` → all analysts get `{ONTOLOGY_SCOPE}` = "N/A — ontology scope not available. Analyze using available evidence only."
+
+---
+
+## Phase 0.8: Context & State Files
+
+### Step 0.8.1: Write Context File
+
+Write `.omc/state/incident-{short-id}/context.md` with:
+- Incident summary (symptoms, timeline, blast radius, mitigation, evidence)
+- Severity and status
+- Evidence types
+- Seed-analyst research summary (key findings, files examined, dimension evaluation)
+- Report language (detect from user's input language)
+
+### Phase 0.8 Exit Gate
+
+MUST NOT proceed until:
+
+- [ ] `perspectives.md` written with valid roster
+- [ ] `context.md` written with structured summary
+- [ ] Ontology scope mapping complete (check for `ontology-scope-analyst.md`) or explicitly skipped
+- [ ] Track field recorded in `perspectives.md`
+
+---
+
+## Phase 1: Analyst Task Creation & Spawn
+
+Team already exists from Phase 0.5.
+
+### Step 1.1: Create Tasks
 
 Create tasks: one per perspective + DA.
 
 - **Per-perspective analyst tasks**: one per selected archetype
 - **DA task**: with `addBlockedBy` depending on ALL analyst task IDs (DA cannot start until all analysts complete)
 
-### Step 1.2.1: Pre-assign Owners
+### Step 1.2: Pre-assign Owners
 
 MUST pre-assign owners via `TaskUpdate(owner="{worker-name}")` BEFORE spawning.
 
@@ -202,8 +303,8 @@ Task(
 - `{WORKER_NAME}` = `"{archetype-id}-analyst"`
 - `{WORK_ACTION}` = `"Investigate the incident from your assigned perspective. Answer ALL key questions with evidence and code references. If ontology docs are available (see REFERENCE DOCUMENTS), explore them for relevant policies and documentation."`
 
-MUST replace `{INCIDENT_CONTEXT}` in every prompt with actual Phase 0 details.
-MUST replace `{ONTOLOGY_SCOPE}`: Orchestrator `Read`s `.omc/state/incident-{short-id}/ontology-scope-analyst.md` and injects file contents. If file not found (e.g., fast track skipped Phase 0.6), inject "N/A — ontology scope not available. Analyze using available evidence only."
+MUST replace `{INCIDENT_CONTEXT}` in every prompt with actual Phase 0 details (from `context.md`).
+MUST replace `{ONTOLOGY_SCOPE}`: Orchestrator `Read`s `.omc/state/incident-{short-id}/ontology-scope-analyst.md` and injects file contents. If file not found, inject "N/A — ontology scope not available. Analyze using available evidence only."
 
 ### Step 1.4: Spawn Devil's Advocate
 
@@ -388,7 +489,9 @@ Tribunal → Phase 2.5.
 ## Gate Summary
 
 ```
-Prerequisite → Step 0.5.5 [session ID] → Setup Agent [Phase 0 + 0.5 + 0.6] → Setup Exit Gate → Phase 1 [create tasks + spawn analysts] → Phase 2 [analysts complete → compile findings → spawn DA (Step 1.4) → DA runs → 7-item gate] → Phase 2.5? → Phase 3 → Phase 4
+Prerequisite → Phase 0 [intake, severity, track, session ID] → Phase 0.5 [TeamCreate + seed-analyst] → Phase 0.6 [perspective approval] → Phase 0.7 [ontology] → Phase 0.8 [context + state files] → Phase 1 [create tasks + spawn analysts] → Phase 2 [7-item gate] → Phase 2.5? → Phase 3 → Phase 4
 ```
+
+FAST_TRACK shortcut: Phase 0 → Phase 0.5 [TeamCreate only, skip seed-analyst] → Phase 0.6 [skip, 4-core locked] → Phase 0.7 → Phase 0.8 → Phase 1.
 
 Every gate specifies exact missing items. Fix before proceeding.
