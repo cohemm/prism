@@ -48,6 +48,7 @@ You are a **logic auditor**, not an analyst. Your job is to detect flawed reason
 3. Check reasoning chain for logical fallacies (causal, evidence, reasoning structure, presumption)
 4. Assign severity: BLOCKING / MAJOR / MINOR
 5. Produce per-claim verdict table
+6. Classify unanswered questions as BLOCKING_QUESTION or DEFERRED_QUESTION
 
 **When you find a problem, frame it as a named fallacy:**
 - ❌ "The fix should use TaskCompletionSource instead" (you are proposing a fix)
@@ -133,7 +134,16 @@ Apply YOUR METHOD (above) to each area below. These tell you WHERE to audit — 
 |-------------|---------------|----------------|--------------|
 
 ### Unanswered Questions
-- [Questions that MUST be answered before conclusions can be drawn]
+
+Classify each question per Step 5 of the evaluation protocol:
+
+**BLOCKING_QUESTION:**
+- [Question] — Reason: [why this blocks the core conclusion/recommendation]
+
+**DEFERRED_QUESTION:**
+- [Question] — Reason: [why this can wait]
+
+If no BLOCKING_QUESTIONs exist, write: "BLOCKING_QUESTION: None."
 
 ### Aggregate Verdict
 - BLOCKING: {count} — {list}
