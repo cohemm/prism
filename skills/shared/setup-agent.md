@@ -155,10 +155,10 @@ Content:
 {ISO 8601 timestamp}
 
 ## Skill
-{plan / incident / prd}
+{prd}
 
 ## Track
-{FAST_TRACK / PERSPECTIVE_TRACK / N/A}
+{PERSPECTIVE_TRACK / N/A}
 
 ## Files Written
 - perspectives.md
@@ -181,7 +181,7 @@ Content:
 {ISO 8601 timestamp}
 
 ## Skill
-{plan / incident / prd}
+{prd}
 
 ## Error
 {error description, e.g. "ontology-docs MCP not configured. Required for PRD analysis."}
@@ -205,10 +205,10 @@ The setup agent MUST attempt to write the sentinel file even on error, so the or
 |------|---------|----------|
 | `{STATE_DIR}/seed-analysis.md` | Internal seed analysis results | YES (internal — not read by orchestrator) |
 | `{STATE_DIR}/perspectives.md` | Locked perspective roster | YES |
-| `{STATE_DIR}/context.md` | Extracted planning/incident/PRD context | YES |
-| `{STATE_DIR}/ontology-catalog.md` | Pool catalog table | NO (skipped on fast track or MCP unavailable in optional mode) |
-| `{STATE_DIR}/ontology-scope-analyst.md` | Analyst ontology scope block | NO (skipped on fast track or MCP unavailable in optional mode) |
-| `{STATE_DIR}/ontology-scope-da.md` | DA ontology scope block | NO (skipped on fast track or MCP unavailable in optional mode) |
+| `{STATE_DIR}/context.md` | Extracted PRD context | YES |
+| `{STATE_DIR}/ontology-catalog.md` | Pool catalog table | NO (MCP unavailable in required mode → error) |
+| `{STATE_DIR}/ontology-scope-analyst.md` | Analyst ontology scope block | NO (MCP unavailable in required mode → error) |
+| `{STATE_DIR}/ontology-scope-da.md` | DA ontology scope block | NO (MCP unavailable in required mode → error) |
 | `{STATE_DIR}/setup-complete.md` | Sentinel: lists files written/skipped | YES (always last) |
 
 ---
@@ -224,7 +224,7 @@ The setup agent MUST attempt to write the sentinel file even on error, so the or
 {detected language}
 
 ## Track
-{FAST_TRACK / PERSPECTIVE_TRACK / N/A}
+{PERSPECTIVE_TRACK / N/A}
 
 ## Perspectives
 
@@ -241,16 +241,6 @@ The setup agent MUST attempt to write the sentinel file even on error, so the or
 
 ### {next-perspective-id}
 ...
-```
-
-#### incident-v2 additions:
-
-```markdown
-## Severity
-{SEV1-4}
-
-## Status
-{Active/Mitigated/Resolved/Recurring}
 ```
 
 #### prd-v2 additions:
