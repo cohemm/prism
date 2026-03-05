@@ -3,7 +3,7 @@ name: incident
 description: Multi-perspective agent team incident postmortem with devil's advocate challenge
 version: 2.1.0
 user-invocable: true
-allowed-tools: Task, SendMessage, TeamCreate, TeamDelete, TaskCreate, TaskUpdate, TaskList, TaskGet, AskUserQuestion, Read, Glob, Grep, Bash, WebFetch, WebSearch, mcp__ontology-docs__search_files, mcp__ontology-docs__read_file, mcp__ontology-docs__list_directory, mcp__ontology-docs__directory_tree
+allowed-tools: Task, SendMessage, TeamCreate, TeamDelete, TaskCreate, TaskUpdate, TaskList, TaskGet, Read, Glob, Grep, Bash, WebFetch, WebSearch, mcp__ontology-docs__search_files, mcp__ontology-docs__read_file, mcp__ontology-docs__list_directory, mcp__ontology-docs__directory_tree
 ---
 
 # Table of Contents
