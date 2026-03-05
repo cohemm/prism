@@ -57,10 +57,19 @@ Orchestrator handles intake directly — NOT delegated. Reference steps: `docs/d
 | File path | Argument matches file path pattern (`.md`, `.txt`, `.doc`, etc.) | `Read` the file |
 | URL | Argument contains `http://` or `https://` | `WebFetch` to retrieve content |
 | Text prompt | Argument is plain text (not path, not URL) | Parse as requirements |
-| No argument | Empty invocation during conversation | Summarize recent conversation context |
+| No argument + context | Empty invocation, prior conversation exists | Summarize recent conversation context |
+| No argument + no context | Empty invocation, no prior conversation | → Step 0.1b: Interactive Goal Elicitation |
 | Mixed | Combination of above | Process each, then merge |
 
 If file not found → error: `"Input file not found: {path}"`. Ask user to provide valid path.
+
+**Step 0.1b: Interactive Goal Elicitation**
+
+When invoked with no argument AND no usable conversation context, ask the user directly:
+
+`AskUserQuestion` (header: "Planning Goal", question: "What would you like to plan? Describe your goal, or provide a file path / URL.", options: 2-4 domain-relevant suggestions inferred from the current working directory if possible, e.g. "New feature", "Architecture redesign", "Migration plan"). Always allow free-text via the implicit "Other" option.
+
+Once the user responds, treat their answer as **Text prompt** input and continue to Step 0.2.
 
 **Hell Mode**: If argument contains `--hell` or `hell` → activate Hell Mode (unanimous consensus required, no iteration limit). Announce: "Hell Mode activated — committee MUST reach 3/3 unanimous consensus."
 
