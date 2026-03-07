@@ -39,7 +39,7 @@ MUST persist phase outputs to `.omc/state/incident-{short-id}/` (created in Phas
 
 ## Prerequisite: Agent Team Mode (HARD GATE)
 
-→ Read and execute `../shared/prerequisite-gate.md`. Set `{PROCEED_TO}` = "Phase 0".
+→ Read and execute `../shared-v2/prerequisite-gate.md`. Set `{PROCEED_TO}` = "Phase 0".
 
 ## Archetype Index
 
@@ -138,7 +138,7 @@ Task(
 )
 ```
 
-→ Apply worker preamble from `../shared/worker-preamble.md` with:
+→ Apply worker preamble from `../shared-v2/worker-preamble.md` with:
 - `{TEAM_NAME}` = `"incident-analysis-{short-id}"`
 - `{WORKER_NAME}` = `"seed-analyst"`
 - `{WORK_ACTION}` = `"Actively investigate the incident using available tools (Grep, Read, Bash, MCP). Evaluate incident dimensions, map to archetype candidates, and generate perspective recommendations. Report findings via SendMessage."`
@@ -217,7 +217,7 @@ Write locked roster to `.omc/state/incident-{short-id}/perspectives.md`:
 
 ## Phase 0.7: Ontology Scope Mapping
 
-→ Read and execute `../shared/ontology-scope-mapping.md` with:
+→ Read and execute `../shared-v2/ontology-scope-mapping.md` with:
 - `{AVAILABILITY_MODE}` = `optional`
 - `{CALLER_CONTEXT}` = `"incident analysis"`
 - `{STATE_DIR}` = `.omc/state/incident-{short-id}`
@@ -271,7 +271,7 @@ MUST read prompt files before spawning. Files are relative to this SKILL.md's di
 
 | Agent | Prompt File | Section |
 |-------|-------------|---------|
-| Devil's Advocate (ALWAYS) | `prompts/devil-advocate.md` + `../shared/da-evaluation-protocol.md` | full file + inline protocol |
+| Devil's Advocate (ALWAYS) | `prompts/devil-advocate.md` + `../shared-v2/da-evaluation-protocol.md` | full file + inline protocol |
 | Timeline | `prompts/core-archetypes.md` | § Timeline Lens |
 | Root Cause | `prompts/core-archetypes.md` | § Root Cause Lens |
 | Systems & Architecture | `prompts/core-archetypes.md` | § Systems Lens |
@@ -298,7 +298,7 @@ Task(
 )
 ```
 
-→ Apply worker preamble from `../shared/worker-preamble.md` to each analyst prompt with:
+→ Apply worker preamble from `../shared-v2/worker-preamble.md` to each analyst prompt with:
 - `{TEAM_NAME}` = `"incident-analysis-{short-id}"`
 - `{WORKER_NAME}` = `"{archetype-id}-analyst"`
 - `{WORK_ACTION}` = `"Investigate the incident from your assigned perspective. Answer ALL key questions with evidence and code references. If ontology docs are available (see REFERENCE DOCUMENTS), explore them for relevant policies and documentation."`
@@ -335,7 +335,7 @@ Monitor via `TaskList`. Forward findings between analysts. Unblock stuck analyst
 
 ### Step 2.2: Clarity Enforcement
 
-→ Apply `../shared/clarity-enforcement.md` with `{EVIDENCE_FORMAT}` = `"file:function:line"`.
+→ Apply `../shared-v2/clarity-enforcement.md` with `{EVIDENCE_FORMAT}` = `"file:function:line"`.
 
 **Rework procedure** when analyst output matches a rejection pattern (MUST occur before analyst marks task `completed` and before DA spawning in Step 1.4):
 1. Send feedback via `SendMessage(recipient: "{analyst-name}", content: "{rejection message from clarity enforcement table}")`.
@@ -352,7 +352,7 @@ Monitor via `TaskList`. Forward findings between analysts. Unblock stuck analyst
 
 ### Step 2.4: DA Challenge-Response Loop
 
-The DA evaluates analyst findings using the evaluation protocol (`../shared/da-evaluation-protocol.md`). The orchestrator mediates a multi-round loop:
+The DA evaluates analyst findings using the evaluation protocol (`../shared-v2/da-evaluation-protocol.md`). The orchestrator mediates a multi-round loop:
 
 **Round 1:**
 1. DA receives analyst findings and produces Fallacy Check Results (per-claim verdicts with severity)
@@ -482,7 +482,7 @@ Tribunal → Phase 2.5.
 
 ## Phase 4: Cleanup
 
-→ Execute `../shared/team-teardown.md`.
+→ Execute `../shared-v2/team-teardown.md`.
 
 ---
 

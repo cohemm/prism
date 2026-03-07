@@ -40,7 +40,7 @@ MUST persist phase outputs to `.omc/state/incident-{short-id}/` (created in Phas
 
 ## Prerequisite: Agent Team Mode (HARD GATE)
 
-→ Read and execute `../shared/prerequisite-gate.md`. Set `{PROCEED_TO}` = "Phase 0".
+→ Read and execute `../shared-v3/prerequisite-gate.md`. Set `{PROCEED_TO}` = "Phase 0".
 
 ## Archetype Index
 
@@ -146,7 +146,7 @@ Task(
 )
 ```
 
-→ Apply worker preamble from `../shared/worker-preamble.md` with:
+→ Apply worker preamble from `../shared-v3/worker-preamble.md` with:
 - `{TEAM_NAME}` = `"incident-analysis-{short-id}"`
 - `{WORKER_NAME}` = `"seed-analyst"`
 - `{WORK_ACTION}` = `"Actively investigate the incident using available tools (Grep, Read, Bash, MCP). Evaluate incident dimensions, map to archetype candidates, and generate perspective recommendations. Report findings via SendMessage."`
@@ -225,7 +225,7 @@ Write locked roster to `.omc/state/incident-{short-id}/perspectives.md`:
 
 ## Phase 0.7: Ontology Scope Mapping
 
-→ Read and execute `../shared/ontology-scope-mapping.md` with:
+→ Read and execute `../shared-v3/ontology-scope-mapping.md` with:
 - `{AVAILABILITY_MODE}` = `optional`
 - `{CALLER_CONTEXT}` = `"incident analysis"`
 - `{STATE_DIR}` = `.omc/state/incident-{short-id}`
@@ -304,7 +304,7 @@ Task(
 )
 ```
 
-→ Apply worker preamble from `../shared/worker-preamble.md` to each analyst prompt with:
+→ Apply worker preamble from `../shared-v3/worker-preamble.md` to each analyst prompt with:
 - `{TEAM_NAME}` = `"incident-analysis-{short-id}"`
 - `{WORKER_NAME}` = `"{archetype-id}-analyst"`
 - `{WORK_ACTION}` = `"Investigate the incident from your assigned perspective. Answer ALL key questions with evidence and code references. If ontology docs are available (see REFERENCE DOCUMENTS), explore them for relevant policies and documentation."`
@@ -332,7 +332,7 @@ As each analyst completes (monitor via `TaskList`), collect their findings from 
 **Immediately persist** each analyst's findings to:
 `.omc/state/incident-{short-id}/raw-findings-{analyst-id}.md`
 
-Apply clarity enforcement (`../shared/clarity-enforcement.md` with `{EVIDENCE_FORMAT}` = `"file:function:line"`) before proceeding. Max 2 rework cycles per analyst.
+Apply clarity enforcement (`../shared-v3/clarity-enforcement.md` with `{EVIDENCE_FORMAT}` = `"file:function:line"`) before proceeding. Max 2 rework cycles per analyst.
 
 ### Step 2.2: Spawn Sidecar DA (per analyst)
 
@@ -528,7 +528,7 @@ Before re-entry, increment `investigation_loops` counter in `.omc/state/incident
 
 ## Phase 4: Cleanup
 
-→ Execute `../shared/team-teardown.md`.
+→ Execute `../shared-v3/team-teardown.md`.
 
 ---
 
