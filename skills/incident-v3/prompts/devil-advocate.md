@@ -55,6 +55,8 @@ Wait for `{ANALYST_NAME}` to respond. Review the response and decide:
 - Still ambiguous → ask another round of questions (max 3 rounds total)
 - Sufficiently clear → proceed to Step 3
 
+**MANDATORY: You MUST always proceed to Step 3 (Request Scoring) after completing Q&A. Scoring is not optional — never skip directly to Step 5. Even if findings appear clear, the scorer provides the objective ambiguity measurement that the orchestrator requires.**
+
 ### Step 3: Request Scoring
 
 Send a scoring request to `shared-scorer` via `SendMessage` with this format:
