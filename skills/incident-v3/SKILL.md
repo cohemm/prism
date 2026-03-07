@@ -3,7 +3,7 @@ name: incident-v3
 description: Multi-perspective agent team incident postmortem with ontology-scoped analysis, Socratic DA sidecar verification, and mathematical ambiguity scoring. Use this skill for incident analysis, postmortem reports, outage investigation, or root cause analysis that requires verified multi-perspective findings with hallucination detection.
 version: 3.0.0
 user-invocable: true
-allowed-tools: Task, SendMessage, TeamCreate, TeamDelete, TaskCreate, TaskUpdate, TaskList, TaskGet, Read, Glob, Grep, Bash, Write, WebFetch, WebSearch, ToolSearch, ListMcpResourcesTool, mcp__ontology-docs__list_allowed_directories, mcp__ontology-docs__search_files, mcp__ontology-docs__read_file, mcp__ontology-docs__read_text_file, mcp__ontology-docs__read_multiple_files, mcp__ontology-docs__list_directory, mcp__ontology-docs__directory_tree
+allowed-tools: Task, SendMessage, TeamCreate, TeamDelete, TaskCreate, TaskUpdate, TaskList, TaskGet, TaskOutput, Read, Glob, Grep, Bash, Write, WebFetch, WebSearch, ToolSearch, ListMcpResourcesTool, mcp__ontology-docs__list_allowed_directories, mcp__ontology-docs__search_files, mcp__ontology-docs__read_file, mcp__ontology-docs__read_text_file, mcp__ontology-docs__read_multiple_files, mcp__ontology-docs__list_directory, mcp__ontology-docs__directory_tree
 ---
 
 # Table of Contents
@@ -94,14 +94,7 @@ If the user provided an incident description via `$ARGUMENTS`, use it directly. 
 2. Status → "Active — Ongoing" / "Mitigated — Temp fix" / "Resolved — Postmortem" / "Recurring — Patterns"
 3. Evidence (multiSelect) → "Logs & errors" / "Metrics/dashboards" / "Code changes" / "All of the above"
 
-### Step 0.3: Fast Track Check
-
-| Condition | Track | Action |
-|-----------|-------|--------|
-| SEV1 OR Active | **FAST_TRACK** | Lock 4 core archetypes (Timeline + Root Cause + Systems + Impact). Skip Phase 0.5 seed-analyst and Phase 0.6 perspective approval. |
-| Otherwise | **PERSPECTIVE_TRACK** | Continue with seed-analyst for dynamic perspective generation. |
-
-### Step 0.4: Generate Session ID and State Directory
+### Step 0.3: Generate Session ID and State Directory
 
 Generate `{short-id}`: `Bash(uuidgen | tr '[:upper:]' '[:lower:]' | cut -c1-8)`. Generate ONCE and reuse throughout all phases.
 
@@ -114,7 +107,6 @@ MUST NOT proceed until ALL documented:
 - [ ] Incident description collected (symptoms, affected systems, impact)
 - [ ] Severity and status determined
 - [ ] Evidence types identified
-- [ ] Track determined (FAST_TRACK or PERSPECTIVE_TRACK)
 - [ ] `{short-id}` generated and state directory created
 
 ---
@@ -128,8 +120,6 @@ TeamCreate(team_name: "incident-analysis-{short-id}", description: "Incident: {s
 ```
 
 ### Step 0.5.2: Spawn Seed Analyst
-
-**Skip on FAST_TRACK** — proceed directly to Phase 0.6 with locked 4-core roster.
 
 Read `prompts/seed-analyst.md` (relative to this SKILL.md).
 
@@ -168,19 +158,26 @@ Wait for seed-analyst to send results via `SendMessage`. The message contains:
 
 After receiving results: `SendMessage(type: "shutdown_request", recipient: "seed-analyst", content: "Seed analysis complete.")`.
 
+### Step 0.5.5: Drain Background Task Output
+
+**CRITICAL (Claude Code bug workaround — [#27431](https://github.com/anthropics/claude-code/issues/27431)):** MCP tool calls hang indefinitely when completed background agents have unread output. Before proceeding to any phase that uses MCP tools (Phase 0.7), drain all completed background task output.
+
+1. Call `TaskList` to find all completed background tasks
+2. For each completed task, call `TaskOutput` to read and discard the output
+3. This clears the internal notification queue and prevents MCP transport deadlock
+
 ### Phase 0.5 Exit Gate
 
 MUST NOT proceed until:
 
 - [ ] Team created
-- [ ] Seed-analyst results received (or FAST_TRACK with 4-core roster locked)
-- [ ] Seed-analyst shut down (or FAST_TRACK)
+- [ ] Seed-analyst results received
+- [ ] Seed-analyst shut down
+- [ ] All background task outputs drained via `TaskOutput`
 
 ---
 
 ## Phase 0.6: Perspective Approval
-
-**Skip on FAST_TRACK** — perspectives already locked. Write locked roster to `perspectives.md` and proceed.
 
 ### Step 0.6.1: Present Perspectives
 
@@ -204,9 +201,6 @@ Write locked roster to `.omc/state/incident-{short-id}/perspectives.md`:
 
 ## Status
 {Active/Mitigated/Resolved/Recurring}
-
-## Track
-{FAST_TRACK / PERSPECTIVE_TRACK}
 
 ## Perspectives
 
@@ -254,7 +248,6 @@ MUST NOT proceed until:
 - [ ] `perspectives.md` written with valid roster
 - [ ] `context.md` written with structured summary
 - [ ] Ontology scope mapping complete (check for `ontology-scope-analyst.md`) or explicitly skipped
-- [ ] Track field recorded in `perspectives.md`
 
 ---
 
@@ -535,8 +528,8 @@ Before re-entry, increment `investigation_loops` counter in `.omc/state/incident
 ## Gate Summary
 
 ```
-Prerequisite → Phase 0 [intake, severity, track, session ID]
-→ Phase 0.5 [TeamCreate + seed-analyst]
+Prerequisite → Phase 0 [intake, severity, session ID]
+→ Phase 0.5 [TeamCreate + seed-analyst + drain background tasks]
 → Phase 0.6 [perspective approval]
 → Phase 0.7 [ontology]
 → Phase 0.8 [context + state files]
@@ -546,7 +539,5 @@ Prerequisite → Phase 0 [intake, severity, track, session ID]
 → Phase 3 [report]
 → Phase 4 [cleanup]
 ```
-
-FAST_TRACK shortcut: Phase 0 → Phase 0.5 [TeamCreate only, skip seed-analyst] → Phase 0.6 [skip, 4-core locked] → Phase 0.7 → Phase 0.8 → Phase 1.
 
 Every gate specifies exact missing items. Fix before proceeding.
