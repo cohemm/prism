@@ -241,21 +241,30 @@ MUST NOT proceed until:
 
 ---
 
-## Phase 1: Analyst Spawn
+## Phase 1: Spawn Analyst-DA Pairs + Shared Scorer
 
-Team already exists from Phase 0.5.
+Team already exists from Phase 0.5. Spawn all agents simultaneously for maximum parallelism.
 
-### Step 1.1: Create Analyst Tasks
+### Step 1.1: Spawn Shared Scorer
 
-Create one task per perspective. NO central DA task — DAs are spawned as sidecars in Phase 2.
+Spawn ONE shared scorer first. Read `prompts/ambiguity-scorer.md`.
 
-### Step 1.2: Pre-assign Owners
+```
+Task(
+  subagent_type="oh-my-claudecode:analyst",
+  name="shared-scorer",
+  team_name="incident-analysis-{short-id}",
+  model="sonnet",
+  run_in_background=true,
+  prompt="{scorer prompt}"
+)
+```
 
-MUST pre-assign owners via `TaskUpdate(owner="{analyst-name}")` BEFORE spawning.
+The scorer receives scoring requests from DAs via `SendMessage` and returns score JSON directly to the requesting DA.
 
-### Step 1.3: Spawn Analysts in Parallel
+### Step 1.2: Spawn Analyst-DA Pairs
 
-Spawn all analyst agents in parallel.
+For each perspective, spawn an analyst AND its paired DA simultaneously.
 
 MUST read prompt files before spawning. Files are relative to this SKILL.md's directory.
 
@@ -275,7 +284,7 @@ MUST read prompt files before spawning. Files are relative to this SKILL.md's di
 | Dependency | `prompts/extended-archetypes.md` | § Dependency |
 | Custom | `prompts/extended-archetypes.md` | § Custom Lens |
 
-**Spawn pattern:**
+**Analyst spawn pattern:**
 ```
 Task(
   subagent_type="oh-my-claudecode:{agent_type}",
@@ -283,17 +292,35 @@ Task(
   team_name="incident-analysis-{short-id}",
   model="{model}",
   run_in_background=true,
-  prompt="{prompt from file with {INCIDENT_CONTEXT} and {ONTOLOGY_SCOPE} replaced}"
+  prompt="{analyst prompt with {INCIDENT_CONTEXT}, {ONTOLOGY_SCOPE}, {DA_NAME} replaced}"
 )
 ```
 
-> Apply worker preamble from `../shared-v3/worker-preamble.md` to each analyst prompt with:
-- `{TEAM_NAME}` = `"incident-analysis-{short-id}"`
-- `{WORKER_NAME}` = `"{archetype-id}-analyst"`
-- `{WORK_ACTION}` = `"Investigate the incident from your assigned perspective. Answer ALL key questions with evidence and code references. If ontology docs are available (see REFERENCE DOCUMENTS), explore them for relevant policies and documentation."`
+> Apply worker preamble with `{WORK_ACTION}` = `"Investigate the incident from your assigned perspective. Send findings to your paired DA. Then respond to DA questions until the DA stops asking."`
 
-MUST replace `{INCIDENT_CONTEXT}` in every prompt with actual Phase 0 details (from `context.md`).
-MUST replace `{ONTOLOGY_SCOPE}`: Orchestrator `Read`s `.omc/state/incident-{short-id}/ontology-scope-analyst.md` and injects file contents. If file not found, inject "N/A — ontology scope not available. Analyze using available evidence only."
+MUST replace `{INCIDENT_CONTEXT}` from `context.md`.
+MUST replace `{ONTOLOGY_SCOPE}` from `ontology-scope-analyst.md` (or "N/A" if not found).
+MUST replace `{DA_NAME}` with the paired DA's name: `"da-{archetype-id}"`.
+
+**DA spawn pattern (one per analyst):**
+
+Read `prompts/devil-advocate.md`.
+
+```
+Task(
+  subagent_type="oh-my-claudecode:critic",
+  name="da-{archetype-id}",
+  team_name="incident-analysis-{short-id}",
+  model="opus",
+  run_in_background=true,
+  prompt="{DA prompt with {ANALYST_NAME}, {INCIDENT_CONTEXT} replaced}"
+)
+```
+
+> Apply worker preamble with `{WORK_ACTION}` = `"Wait for analyst findings, run Socratic Q&A loop, request scoring from shared-scorer, and report verified results to team-lead."`
+
+MUST replace `{ANALYST_NAME}` with `"{archetype-id}-analyst"`.
+MUST replace `{INCIDENT_CONTEXT}` from `context.md`.
 
 ### Phase 1 Exit Gate
 

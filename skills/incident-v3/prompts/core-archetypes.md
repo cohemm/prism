@@ -6,8 +6,12 @@
 - [Systems & Architecture Lens](#systems-lens)
 - [Impact Lens](#impact-lens)
 
-All prompts use `{INCIDENT_CONTEXT}` placeholder — replace with Phase 0 details at spawn time.
-All prompts use `{ONTOLOGY_SCOPE}` placeholder — replace with **full-pool scoped reference** from Phase 0.6.
+All prompts use these placeholders — replace at spawn time:
+- `{INCIDENT_CONTEXT}` — Phase 0 details
+- `{ONTOLOGY_SCOPE}` — full-pool scoped reference from Phase 0.7
+- `{DA_NAME}` — paired DA agent name (e.g., "da-timeline")
+
+**Communication protocol:** After investigation, send findings directly to `{DA_NAME}` (NOT to team-lead). Then respond to DA's Socratic questions until DA stops asking. The DA drives the verification loop.
 
 ---
 
@@ -42,7 +46,7 @@ OUTPUT:
 ## Key Observations
 - [Patterns and anomalies]
 
-Read TaskGet, mark in_progress → completed. Send findings via SendMessage.
+Read TaskGet, mark in_progress → completed. Send findings to `{DA_NAME}` via SendMessage. Then respond to DA questions until DA stops asking.
 
 ---
 
@@ -91,7 +95,7 @@ OUTPUT:
 ## Contributing Factors
 - [Factor + severity + code ref]
 
-Read TaskGet, mark in_progress → completed. Send findings via SendMessage.
+Read TaskGet, mark in_progress → completed. Send findings to `{DA_NAME}` via SendMessage. Then respond to DA questions until DA stops asking.
 
 ---
 
@@ -140,7 +144,7 @@ OUTPUT:
 ## Recommendations
 - [Prioritized improvements with code locations]
 
-Read TaskGet, mark in_progress → completed. Send findings via SendMessage.
+Read TaskGet, mark in_progress → completed. Send findings to `{DA_NAME}` via SendMessage. Then respond to DA questions until DA stops asking.
 
 ---
 
@@ -190,4 +194,4 @@ OUTPUT:
 ## Impact Score: [Critical/High/Medium/Low]
 Justification: [reason]
 
-Read TaskGet, mark in_progress → completed. Send findings via SendMessage.
+Read TaskGet, mark in_progress → completed. Send findings to `{DA_NAME}` via SendMessage. Then respond to DA questions until DA stops asking.

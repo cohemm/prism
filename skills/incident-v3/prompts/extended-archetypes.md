@@ -12,8 +12,12 @@
 - [Tier 2: Dependency](#dependency)
 - [Custom Lens](#custom-lens)
 
-All prompts: replace `{INCIDENT_CONTEXT}` with Phase 0 details.
-All prompts: replace `{ONTOLOGY_SCOPE}` with **full-pool scoped reference** from Phase 0.6.
+All prompts use these placeholders — replace at spawn time:
+- `{INCIDENT_CONTEXT}` — Phase 0 details
+- `{ONTOLOGY_SCOPE}` — full-pool scoped reference from Phase 0.7
+- `{DA_NAME}` — paired DA agent name (e.g., "da-security")
+
+**Communication protocol:** After investigation, send findings directly to `{DA_NAME}` (NOT to team-lead). Then respond to DA's Socratic questions until DA stops asking. The DA drives the verification loop.
 
 ---
 
@@ -59,7 +63,7 @@ OUTPUT:
 ## Recommendations
 ### Immediate (contain) / Short-term (remediate) / Long-term (prevent)
 
-Read TaskGet, mark in_progress → completed. Send findings via SendMessage.
+Read TaskGet, mark in_progress → completed. Send findings to `{DA_NAME}` via SendMessage. Then respond to DA questions until DA stops asking.
 
 ---
 
@@ -104,7 +108,7 @@ OUTPUT:
 - Irrecoverable: [what, why]
 - Recoverable: [what, from where, how]
 
-Read TaskGet, mark in_progress → completed. Send findings via SendMessage.
+Read TaskGet, mark in_progress → completed. Send findings to `{DA_NAME}` via SendMessage. Then respond to DA questions until DA stops asking.
 
 ---
 
@@ -144,7 +148,7 @@ OUTPUT:
 ## Recommendations
 ### Immediate / Short-term / Long-term
 
-Read TaskGet, mark in_progress → completed. Send findings via SendMessage.
+Read TaskGet, mark in_progress → completed. Send findings to `{DA_NAME}` via SendMessage. Then respond to DA questions until DA stops asking.
 
 ---
 
@@ -192,7 +196,7 @@ OUTPUT:
 ### Short-term (error boundaries, fallback UI)
 ### Long-term (offline mode, graceful degradation architecture)
 
-Read TaskGet, mark in_progress → completed. Send findings via SendMessage.
+Read TaskGet, mark in_progress → completed. Send findings to `{DA_NAME}` via SendMessage. Then respond to DA questions until DA stops asking.
 
 ---
 
@@ -215,7 +219,7 @@ TASKS:
 OUTPUT:
 {output sections from below}
 
-Read TaskGet, mark in_progress → completed. Send findings via SendMessage.
+Read TaskGet, mark in_progress → completed. Send findings to `{DA_NAME}` via SendMessage. Then respond to DA questions until DA stops asking.
 ```
 
 ---
