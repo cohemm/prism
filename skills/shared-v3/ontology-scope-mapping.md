@@ -67,52 +67,41 @@ Call `mcp__ontology-docs__list_allowed_directories` to check if the ontology-doc
 
 ### Step 2: Screen 1 — MCP Data Source Selection
 
-Discover available MCP servers that can provide queryable data (databases, monitoring, error tracking, project management, etc.).
+Discover available MCP servers that can provide queryable data.
 
 #### Discovery
 
-Two-pronged discovery to ensure all MCP servers are found:
-
-1. Call `ListMcpResourcesTool()` (no server filter) to discover all resource-based MCP servers. Extract unique server names from the `server` field in results.
-2. Call `ToolSearch(query="mcp", max_results=200)` to discover tool-based MCP servers. Extract unique server names from tool name patterns: `mcp__<server_name>__<tool_name>`.
-3. Combine server names from steps 1 and 2. Deduplicate.
-4. **Exclude** these servers from the data source list:
-   - `ontology-docs` (handled as Document Source in Step 1)
-   - Any server name containing `plugin_` (internal plugin tools, not data sources)
-5. For each remaining server, call `ToolSearch(query="+<server_name>", max_results=10)` to list its tools. Compile:
-   - **Server name**: the `<server_name>` from the tool prefix
-   - **Tool count**: number of tools discovered for this server
-   - **Key tools**: up to 5 most relevant tool names (without the `mcp__<server>__` prefix for readability)
-   - **Description**: infer purpose from tool names (e.g., `run_query` + `get_table_schema` → "Database queries and schema inspection"). If purpose cannot be confidently inferred, use: "Query {server_name} via {tool_count} available tools"
-   - **Read-only tools**: filter out obvious write/mutation tools (names containing `create`, `update`, `delete`, `patch`, `post`) for the analyst tool list. For query-execution tools like `run_query` or `run_select_query`, keep them but add a safety note: "Use SELECT queries only. Do NOT execute INSERT, UPDATE, DELETE, or DDL statements." Record full list separately for reference.
+1. Call `ToolSearch(query="mcp", max_results=200)` to discover MCP servers. Extract unique server names from tool name patterns: `mcp__<server_name>__<tool_name>`.
+2. **Exclude** these servers:
+   - `ontology-docs` (handled in Step 1)
+   - Any server name containing `plugin_` (internal plugin tools)
+3. For each remaining server, compile from already-discovered tools:
+   - **Server name**, **Tool count**, **Key tools** (up to 5), **Description** (infer from tool names)
 
 Store as `DISCOVERED_MCP_SERVERS[]`.
 
-If no MCP data sources are discovered → skip to Step 3 with note: "No queryable MCP data sources found."
+If no MCP data sources found → set `SELECTED_MCP_SERVERS[]` to empty, skip to Step 3.
 
 #### Selection
 
-Present discovered MCP servers for user selection via `AskUserQuestion` with `multiSelect: true`:
+Present discovered servers via `AskUserQuestion`:
 
 ```
 AskUserQuestion(
   header: "Live Data Sources",
-  question: "Select live data sources to enable for {CALLER_CONTEXT}. These are connected services (databases, monitoring, error tracking) that analysts can query in real-time during analysis. (multiple selection)",
+  question: "Select live data sources for {CALLER_CONTEXT}. (multiple selection)",
   multiSelect: true,
   options: [
-    {label: "{server_name}", description: "{tool_count} tools — {description}. Key: {key_tool_1}, {key_tool_2}, ..."},
+    {label: "{server_name}", description: "{tool_count} tools — {description}"},
     ...per discovered server,
     {label: "Skip", description: "Proceed without MCP data sources"}
   ]
 )
 ```
 
-If user selects "Skip" or no servers → proceed to Step 3 with empty `SELECTED_MCP_SERVERS[]`.
+If user selects "Skip", gives empty answer, or selects no servers → proceed to Step 3 with empty `SELECTED_MCP_SERVERS[]`.
 
-Otherwise, for each selected server:
-1. Record full tool list (call additional `ToolSearch(query="+<server_name>")` if the initial discovery was incomplete)
-2. Generate a brief capability summary describing what analysts can query
-3. Add to `SELECTED_MCP_SERVERS[]` with: server name, full tool list, description, capability summary
+For each selected server, record: server name, tool list, description, capability summary.
 
 → **NEXT ACTION: Proceed to Step 3 — ask about external sources.**
 
