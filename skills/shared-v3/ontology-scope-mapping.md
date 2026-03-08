@@ -7,7 +7,7 @@
 - [Parameters](#parameters)
 - [Phase A: Build Ontology Pool](#phase-a-build-ontology-pool)
   - [Pool Source Rules](#pool-source-rules)
-  - [Step 1: Check ontology-docs MCP Availability](#step-1-check-ontology-docs-mcp-availability)
+  - [Step 1: Check Document Source Availability](#step-1-check-document-source-availability)
   - [Step 2: Screen 1 — MCP Data Source Selection](#step-2-screen-1--mcp-data-source-selection)
   - [Step 3: Screen 2 — External Source Addition](#step-3-screen-2--external-source-addition)
   - [Step 4: Screen 3 — Pool Configuration Confirmation](#step-4-screen-3--pool-configuration-confirmation)
@@ -21,7 +21,7 @@
 
 | Placeholder | Description | Examples |
 |-------------|-------------|---------|
-| `{AVAILABILITY_MODE}` | Behavior when ontology-docs MCP is not configured | `optional` (warn and proceed) / `required` (error and stop) |
+| `{AVAILABILITY_MODE}` | Behavior when document source is not configured | `optional` (warn and proceed) / `required` (error and stop) |
 | `{CALLER_CONTEXT}` | Context label for screen prompt customization | `"analysis"` / `"PRD analysis"` / `"incident analysis"` |
 | `{STATE_DIR}` | Absolute path to the skill's state directory for file persistence | `.omc/state/plan-abc123/` |
 
@@ -32,12 +32,12 @@
 ### Pool Source Rules
 
 #### Document Source
-- The `ontology-docs` MCP server exposes registered directories
-- The lead calls `list_allowed_directories` → `list_directory` (1-depth) on each root → collects `ONTOLOGY_DIRS[]`
-- Each directory is a separate pool entry; analysts search only within these paths
+- The `prism-mcp` server exposes documentation directories via `prism_docs_*` tools (configured in `~/.prism/docs.json`)
+- The lead calls `prism_docs_roots` to get `ONTOLOGY_DIRS[]`
+- Each directory is a separate pool entry; analysts search only within these paths using `prism_docs_list`, `prism_docs_read`, `prism_docs_search`
 
 #### MCP Data Source
-- Any registered MCP server (excluding `ontology-docs` and internal plugin tools) can be added as a queryable data source
+- Any registered MCP server (excluding `prism-mcp` and internal plugin tools) can be added as a queryable data source
 - Discovery via `ToolSearch` to find available MCP server tools grouped by server name
 - Selected servers provide their tools to analysts for querying live data (databases, monitoring, error tracking, etc.)
 - Tool access instructions are generated per server based on discovered tools
@@ -53,16 +53,15 @@
 - Each file is read and summarized at pool build time
 - Files that fail to read are marked as `unavailable` in the catalog
 
-### Step 1: Check ontology-docs MCP and Resolve Directories
+### Step 1: Check Document Source Availability
 
-1. Run `Bash("grep -A 20 '\"ontology-docs\"' ~/.claude.json")` to extract the MCP config
-2. Parse the `args` array — paths after `@modelcontextprotocol/server-filesystem` are the registered directories. Record as `ONTOLOGY_DIRS[]`
-3. If config not found or no paths → check `{AVAILABILITY_MODE}`:
-   - `optional`: `ONTOLOGY_AVAILABLE=false`. Warn and proceed to Step 2.
-   - `required`: Error and **STOP.**
-4. If paths found → `ONTOLOGY_AVAILABLE=true`. Proceed to Step 2.
+Call `mcp__prism-mcp__prism_docs_roots` to get configured documentation directories.
 
-Do NOT use `list_allowed_directories` — the MCP roots protocol overrides server-configured paths, returning broad paths (e.g., home directory) instead of the actual registered directories. The config file is the source of truth.
+| Result | {AVAILABILITY_MODE}=optional | {AVAILABILITY_MODE}=required |
+|--------|------------------------------|------------------------------|
+| Returns 1+ paths | `ONTOLOGY_AVAILABLE=true`. Record as `ONTOLOGY_DIRS[]`. Proceed to Step 2. | Record as `ONTOLOGY_DIRS[]`. Proceed to Step 2. |
+| Returns 0 paths or "No directories configured" | `ONTOLOGY_AVAILABLE=false`. Warn and proceed to Step 2. | Error: "No documentation directories configured in ~/.prism/docs.json." **STOP.** |
+| Error / tool not found | `ONTOLOGY_AVAILABLE=false`. Warn and proceed to Step 2. | Error and **STOP.** |
 
 ### Step 2: Screen 1 — MCP Data Source Selection
 
@@ -72,7 +71,7 @@ Discover available MCP servers that can provide queryable data.
 
 1. Call `ToolSearch(query="mcp", max_results=200)` to discover MCP servers. Extract unique server names from tool name patterns: `mcp__<server_name>__<tool_name>`.
 2. **Exclude** these servers:
-   - `ontology-docs` (handled in Step 1)
+   - `prism-mcp` (docs tools handled in Step 1, interview/score tools are internal)
    - Any server name containing `plugin_` (internal plugin tools)
 3. For each remaining server, compile from already-discovered tools:
    - **Server name**, **Tool count**, **Key tools** (up to 5), **Description** (infer from tool names)
@@ -224,16 +223,18 @@ All perspectives (analysts) receive the **full pool** — no per-perspective fil
 
 Generate `{ONTOLOGY_SCOPE}` block containing all available pool entries:
 
-For **document sources** (ontology-docs MCP):
+For **document sources** (prism-mcp docs):
 ```
-- doc: ontology-docs MCP (available)
+- doc: prism-mcp docs (available)
   Directories:
   {ONTOLOGY_DIRS[] — one per line, e.g.:
     - /Users/heechul/podo-backend/podo-docs
     - /Users/heechul/podo-app/podo-docs
     - /Users/heechul/grape/podo-docs}
-  Access: Use mcp__ontology-docs__ tools (search_files, read_file, list_directory).
-          Always pass a directory from the list above as the path argument.
+  Access: Use prism_docs_* tools. Always pass a directory from the list above as the path argument.
+    - prism_docs_list(path) — list directory contents
+    - prism_docs_read(path) — read a file
+    - prism_docs_search(path, pattern) — search files by glob pattern
 ```
 
 For **MCP data sources** (mcp query):
@@ -290,6 +291,6 @@ After writing the file, the orchestrator MAY discard the in-memory scope block d
 
 **Empty pool skip:** If Pool Catalog is empty and `{AVAILABILITY_MODE}`=`optional`, file-write items below are N/A.
 
-- [ ] Phase A complete: ontology-docs checked, MCP data sources selected (or skipped), external sources collected (or skipped), pool confirmed
+- [ ] Phase A complete: document source checked, MCP data sources selected (or skipped), external sources collected (or skipped), pool confirmed
 - [ ] `{STATE_DIR}/ontology-catalog.md` written with Pool Catalog
 - [ ] `{STATE_DIR}/ontology-scope-analyst.md` written with analyst scope block

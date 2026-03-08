@@ -3,7 +3,7 @@ name: incident-v3
 description: Multi-perspective agent team incident postmortem with ontology-scoped analysis and MCP-based Socratic verification with mathematical ambiguity scoring. Use this skill for incident analysis, postmortem reports, outage investigation, or root cause analysis that requires verified multi-perspective findings with hallucination detection.
 version: 4.0.0
 user-invocable: true
-allowed-tools: Task, SendMessage, TeamCreate, TeamDelete, TaskCreate, TaskUpdate, TaskList, TaskGet, TaskOutput, Read, Glob, Grep, Bash, Write, WebFetch, WebSearch, ToolSearch, ListMcpResourcesTool, mcp__ontology-docs__list_allowed_directories, mcp__ontology-docs__search_files, mcp__ontology-docs__read_file, mcp__ontology-docs__read_text_file, mcp__ontology-docs__read_multiple_files, mcp__ontology-docs__list_directory, mcp__ontology-docs__directory_tree, mcp__prism__prism_interview---
+allowed-tools: Task, SendMessage, TeamCreate, TeamDelete, TaskCreate, TaskUpdate, TaskList, TaskGet, TaskOutput, Read, Glob, Grep, Bash, Write, WebFetch, WebSearch, ToolSearch, ListMcpResourcesTool, mcp__prism-mcp__prism_docs_roots, mcp__prism-mcp__prism_docs_list, mcp__prism-mcp__prism_docs_read, mcp__prism-mcp__prism_docs_search, mcp__prism-mcp__prism_interview---
 
 # Incident Postmortem v3
 
