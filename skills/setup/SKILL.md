@@ -87,17 +87,29 @@ AskUserQuestion(
 )
 ```
 
-If "Add directories":
-1. Ask for directory paths (one at a time, loop until user says done):
+If "Add directories", loop:
+1. Ask for a directory path:
    ```
    AskUserQuestion(
      header: "Documentation Directory",
-     question: "Enter the absolute path to a documentation directory (or 'done' to finish):"
+     question: "Enter the absolute path to a documentation directory:"
    )
    ```
-2. Validate each path exists: `Bash("test -d '<path>' && echo OK || echo NOT_FOUND")`
+2. Validate path exists: `Bash("test -d '<path>' && echo OK || echo NOT_FOUND")`
 3. If not found, warn and ask again
-4. Write all valid paths to `~/.prism/ontology-docs.json`:
+4. Add to list, then ask:
+   ```
+   AskUserQuestion(
+     header: "Add More?",
+     question: "Added: <path>. Current list: <all paths>. Add another directory?",
+     options: [
+       {label: "Add another", description: "Add one more directory"},
+       {label: "Done", description: "Finish and save"}
+     ]
+   )
+   ```
+5. If "Add another" → go to step 1. If "Done" → exit loop.
+6. Write all valid paths to `~/.prism/ontology-docs.json`:
    ```json
    {
      "directories": [
