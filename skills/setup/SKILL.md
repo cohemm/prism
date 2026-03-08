@@ -72,9 +72,47 @@ Register prism-mcp as a user-scope MCP server:
 claude mcp add prism-mcp -s user -- "$HOME/.prism/mcp/prism-mcp"
 ```
 
-## Step 4: Verify
+## Step 4: Configure Documentation Directories (Optional)
+
+Ask the user if they want to configure documentation directories for ontology-scoped analysis:
+
+```
+AskUserQuestion(
+  header: "Documentation Directories",
+  question: "Do you want to configure documentation directories? These are used by prism skills (incident, prd, plan) to reference your project docs during analysis.",
+  options: [
+    {label: "Add directories", description: "I have documentation directories to add"},
+    {label: "Skip", description: "I'll configure this later"}
+  ]
+)
+```
+
+If "Add directories":
+1. Ask for directory paths (one at a time, loop until user says done):
+   ```
+   AskUserQuestion(
+     header: "Documentation Directory",
+     question: "Enter the absolute path to a documentation directory (or 'done' to finish):"
+   )
+   ```
+2. Validate each path exists: `Bash("test -d '<path>' && echo OK || echo NOT_FOUND")`
+3. If not found, warn and ask again
+4. Write all valid paths to `~/.prism/ontology-docs.json`:
+   ```json
+   {
+     "directories": [
+       "/path/to/project-a/docs",
+       "/path/to/project-b/docs"
+     ]
+   }
+   ```
+
+If "Skip", inform the user they can configure later by creating `~/.prism/ontology-docs.json` manually.
+
+## Step 5: Verify
 
 Confirm to the user:
 - Binary installed at `~/.prism/mcp/prism-mcp`
 - MCP server registered as `prism-mcp` (user scope)
+- Documentation directories configured (if any) at `~/.prism/ontology-docs.json`
 - Tell the user to restart Claude Code to activate the MCP server
