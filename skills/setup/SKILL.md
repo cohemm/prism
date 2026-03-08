@@ -74,49 +74,32 @@ claude mcp add prism-mcp -s user -- "$HOME/.prism/mcp/prism-mcp"
 
 ## Step 4: Configure Documentation Directories (Optional)
 
-Ask the user if they want to configure documentation directories for ontology-scoped analysis:
+Loop with a single question per iteration. The user can type a path directly or skip:
 
 ```
 AskUserQuestion(
   header: "Documentation Directories",
-  question: "Do you want to configure documentation directories? These are used by prism skills (incident, prd, plan) to reference your project docs during analysis.",
-  options: [
-    {label: "Add directories", description: "I have documentation directories to add"},
-    {label: "Skip", description: "I'll configure this later"}
-  ]
-)
-```
-
-If "Add directories", loop with a single question per iteration:
-
-```
-AskUserQuestion(
-  header: "Add Documentation Directory",
-  question: "<current_list_or_empty>\nEnter the absolute path to a documentation directory:",
+  question: "<current_list_or_empty>prism 스킬(incident, prd, plan)이 분석 시 참조할 문서 디렉토리 경로를 입력하세요:",
   options: [
     {label: "Enter path", description: "Type an absolute directory path"},
-    {label: "Done", description: "Save and finish"}
+    {label: "Skip", description: "Save and finish"}
   ]
 )
 ```
 
-- `<current_list_or_empty>`: If directories already added, show `"Current directories:\n- /path/a\n- /path/b\n\n"`. If empty, omit.
-- **"Enter path"**: Extract path from input → validate with `test -d` → if not found, warn and loop back → if already in list, warn and loop back → if valid and new, add to list, immediately loop back with updated list.
-- **"Done"**: Exit loop.
+- `<current_list_or_empty>`: If directories already added, show `"Current directories:\n- /path/a\n- /path/b\n\n"`. If none yet, omit.
+- **"Enter path"**: Extract path → validate with `test -d` → if not found, warn and loop back → if already in list, warn and loop back → if valid, add to list, immediately loop back with updated list.
+- **"Skip"**: Exit loop. If any paths were added, write to `~/.prism/ontology-docs.json`. If none, inform user they can configure later.
 
-Do NOT add a separate confirmation after each path. One question per iteration.
-
-Write all valid paths to `~/.prism/ontology-docs.json`:
-   ```json
-   {
-     "directories": [
-       "/path/to/project-a/docs",
-       "/path/to/project-b/docs"
-     ]
-   }
-   ```
-
-If "Skip", inform the user they can configure later by creating `~/.prism/ontology-docs.json` manually.
+Write config:
+```json
+{
+  "directories": [
+    "/path/to/project-a/docs",
+    "/path/to/project-b/docs"
+  ]
+}
+```
 
 ## Step 5: Verify
 
