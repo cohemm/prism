@@ -307,7 +307,7 @@ Team already exists from Phase 0.5. Spawn all analyst agents in parallel. Each a
 
 ### Step 1.1: Spawn Analysts
 
-MUST read prompt files before spawning. Files are relative to this SKILL.md's directory.
+MUST read prompt files before spawning. Files are relative to this SKILL.md's directory. `prompts/verification-protocol.md` is injected into all analyst prompts (referenced in core-archetypes.md and extended-archetypes.md headers).
 
 | Agent | Prompt File | Section |
 |-------|-------------|---------|
