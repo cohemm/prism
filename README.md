@@ -12,10 +12,10 @@ How has humanity solved its hardest problems? Diverse minds in a room, arguing u
 
 | Skill | Command | Description |
 |-------|---------|-------------|
+| **analyze** | `/prism:analyze` | General-purpose multi-perspective analysis with MCP-based Socratic verification + ambiguity scoring |
 | **incident** | `/prism:incident` | Incident postmortem with 3-6 perspective agents + Devil's Advocate + optional Tribunal |
 | **prd** | `/prism:prd` | PRD policy conflict analysis against your reference docs via ontology-docs MCP |
 | **plan** | `/prism:plan` | Multi-perspective planning with committee debate + consensus enforcement |
-| **analyze** | `/prism:analyze` | General-purpose multi-perspective analysis with MCP-based Socratic verification + ambiguity scoring |
 
 ## Prerequisites
 
@@ -146,10 +146,10 @@ After completing all installation steps, your `~/.claude/settings.json` should c
 
 | Skill | Command | Workflow | Output |
 |-------|---------|---------|--------|
+| **analyze** | `/prism:analyze` | Intake → Seed Analysis → Perspective Generation → Parallel Analysts → Socratic Verification (per analyst) → Synthesis | Analysis report |
 | **incident** | `/prism:incident` | Intake → Seed Analysis → 3-6 Perspective Agents → Devil's Advocate → optional Tribunal → Report | Postmortem report |
 | **prd** | `/prism:prd path/to/prd.md` | Read PRD → 3-6 Policy Analysts (via ontology-docs MCP) → Devil's Advocate → Report | `prd-policy-review-report.md` |
 | **plan** | `/prism:plan path/to/prd.md` | Input Analysis → 3-6 Analysts → Devil's Advocate → Committee Debate (UX + Eng + Planner) → Consensus Loop → Plan | `plan.md` |
-| **analyze** | `/prism:analyze` | Intake → Seed Analysis → Perspective Generation → Parallel Analysts → Socratic Verification (per analyst) → Synthesis | Analysis report |
 
 All skills share the same core pattern: **spawn multi-perspective agents → cross-validate → synthesize**. See [How It Works](#how-it-works) for detailed flow diagrams.
 
