@@ -1,6 +1,6 @@
 # Ontology Scope Mapping
 
-**Execution context:** This module can be executed either by the orchestrator directly OR by a setup agent (see `setup-agent.md`). The `{STATE_DIR}` parameter determines where output files are written. All AskUserQuestion interactions work in both contexts.
+**Execution context:** This module is executed by the orchestrator. The `{STATE_DIR}` parameter determines where output files are written.
 
 ## Table of Contents
 
