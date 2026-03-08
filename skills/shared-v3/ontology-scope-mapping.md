@@ -65,7 +65,12 @@ Call `mcp__ontology-docs__list_allowed_directories` to check if the ontology-doc
 
 ### Step 1b: Resolve Document Directories
 
-For each path in `ALLOWED_ROOTS[]`, call `mcp__ontology-docs__list_directory(path)` to get its 1-depth contents. Collect all `[DIR]` entries as `ONTOLOGY_DIRS[]` (full paths). These are the only paths analysts may search.
+`list_allowed_directories` may return broad paths (e.g., user home directory) due to the MCP roots protocol overriding server-configured paths. Analysts must never search on these broad paths — it causes `search_files` to scan irrelevant content (node_modules, .git, caches) and timeout.
+
+**Resolution:**
+1. Check each returned path — if it looks like a specific documentation directory (leaf directory, contains `.md` files or doc structure), use it directly as `ONTOLOGY_DIRS[]`
+2. If ANY returned path is a broad root (home directory, project root, workspace root), call `list_directory(path)` 1-depth to discover subdirectories, then present the full list to the user via `AskUserQuestion` (multiSelect: true, header: "Documentation Directories") and let them select which directories contain documentation
+3. Record selected paths as `ONTOLOGY_DIRS[]`. These are the only paths analysts may search.
 
 ### Step 2: Screen 1 — MCP Data Source Selection
 
