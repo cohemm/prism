@@ -93,7 +93,7 @@ claude plugin marketplace add Yeachan-Heo/oh-my-claudecode
 claude plugin install oh-my-claudecode@omc
 ```
 
-### Step 4: Run setup (optional)
+### Step 4: Run setup
 
 Prism includes a setup skill that automatically downloads the `prism-mcp` binary and registers it as a user-scope MCP server:
 
