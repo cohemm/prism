@@ -17,7 +17,7 @@ These phases are delegated to the setup agent (`../shared-v2/setup-agent.md`). T
 /prd-v2 @path/to/prd.md
 ```
 
-Reference docs are accessed via `ontology-docs` MCP — no path input needed.
+Reference docs are accessed via prism_docs tools — no path input needed.
 If PRD file not found, error: `"PRD file not found: {path}"`.
 
 ---
@@ -39,7 +39,7 @@ Read full PRD via `Read`. Also read any sibling files (handoff, constraints) in 
 
 ### 1.2 Generate Perspectives
 
-Analyze PRD functional requirements and cross-reference with ontology-docs domains to derive **N orthogonal policy analysis perspectives**.
+Analyze PRD functional requirements and cross-reference with prism_docs domains to derive **N orthogonal policy analysis perspectives**.
 
 Rules:
 - Each perspective covers a **policy ontology unit** (e.g., ticket policy, payment policy, retention policy)
@@ -67,4 +67,4 @@ PRD sections: {FR-N, NFR-N, etc.}
 
 PRD analysis requires policy document references — MCP unavailability stops execution.
 
-**Note:** This skill requires the `ontology-docs` MCP server to be configured. If not set up, run the `podo-plugin:install-docs` skill or see the plugin README for configuration instructions.
+**Note:** This skill requires the prism-mcp docs tools to be configured. If not set up, run the `podo-plugin:install-docs` skill or see the plugin README for configuration instructions.

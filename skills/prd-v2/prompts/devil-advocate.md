@@ -97,7 +97,7 @@ Apply YOUR METHOD (above) to each area below. These tell you WHERE to audit — 
 
 4. EVIDENCE USAGE:
    - Watch for: Hasty Generalization, Biased Sample, One-Sidedness, Texas Sharpshooter
-   - Check: Are ontology-docs citations accurate? Does the cited section actually say what the analyst claims?
+   - Check: Are prism_docs citations accurate? Does the cited section actually say what the analyst claims?
    - Check: Did the analyst cherry-pick a single clause while ignoring exceptions or qualifiers in the same doc?
 
 5. CROSS-PERSPECTIVE:

@@ -124,7 +124,7 @@ Outputs (written by ontology-scope-mapping.md):
 
 ### Required Mode Error Handling (prd-v2)
 
-If `{AVAILABILITY_MODE}=required` and ontology-docs MCP is unavailable:
+If `{AVAILABILITY_MODE}=required` and prism-mcp docs tools are unavailable:
 - The ontology-scope-mapping module will ERROR and STOP
 - This error propagates to the setup agent
 - The setup agent writes the error to `setup-complete.md` and terminates
@@ -182,13 +182,13 @@ Content:
 {prd}
 
 ## Error
-{error description, e.g. "ontology-docs MCP not configured. Required for PRD analysis."}
+{error description, e.g. "prism-mcp docs tools not configured. Required for PRD analysis."}
 
 ## Files Written Before Failure
 - {any files successfully written before the error}
 
 ## Recommendation
-{action for the user, e.g. "Run podo-plugin:install-docs to configure ontology-docs MCP."}
+{action for the user, e.g. "Run podo-plugin:install-docs to configure prism-mcp docs tools."}
 ```
 
 The setup agent MUST attempt to write the sentinel file even on error, so the orchestrator can distinguish "agent crashed" (no sentinel) from "setup failed with known error" (error sentinel).

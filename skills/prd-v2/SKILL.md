@@ -3,7 +3,7 @@ name: prd-v2
 description: Multi-perspective PRD policy conflict analysis with ontology-scoped analysis
 version: 1.0.0
 user-invocable: true
-allowed-tools: Task, SendMessage, TeamCreate, TeamDelete, TaskCreate, TaskUpdate, TaskList, TaskGet, Read, Glob, Grep, Bash, Write, WebFetch, WebSearch, ToolSearch, ListMcpResourcesTool, mcp__ontology-docs__list_allowed_directories, mcp__ontology-docs__directory_tree, mcp__ontology-docs__list_directory, mcp__ontology-docs__read_file, mcp__ontology-docs__read_text_file, mcp__ontology-docs__read_multiple_files, mcp__ontology-docs__search_files
+allowed-tools: Task, SendMessage, TeamCreate, TeamDelete, TaskCreate, TaskUpdate, TaskList, TaskGet, Read, Glob, Grep, Bash, Write, WebFetch, WebSearch, ToolSearch, ListMcpResourcesTool, mcp__prism-mcp__prism_docs_roots, mcp__prism-mcp__prism_docs_list, mcp__prism-mcp__prism_docs_read, mcp__prism-mcp__prism_docs_search
 ---
 
 # Table of Contents
@@ -82,7 +82,7 @@ NO `team_name` — runs in isolated session. Blocks until setup agent completes 
 
 - Read `{STATE_DIR}/setup-complete.md`
 - If missing AND no other state files → setup agent failed (likely ontology unavailable)
-  → Surface error to user: "Setup failed. Ensure ontology-docs MCP is configured. Run `podo-plugin:install-docs` or see README." **STOP.**
+  → Surface error to user: "Setup failed. Ensure prism-mcp docs tools are configured. Run `podo-plugin:install-docs` or see README." **STOP.**
 - If `setup-complete.md` lists ontology error → surface error to user, **STOP**
 
 **Step C: Read setup outputs**
@@ -116,7 +116,7 @@ MUST NOT proceed until:
 
 Create 1 task per perspective. MUST include in `description`:
 - Summary of relevant PRD content (FR/NFR for this perspective)
-- Analysis scope (policy domains to explore via ontology-docs MCP)
+- Analysis scope (policy domains to explore via prism_docs tools)
 - **Ontology scope mapping** (which specific docs to prioritize)
 - Analysis rules (see "Analyst Behavior Rules" below)
 
@@ -163,7 +163,7 @@ All analysts use `analyst` (opus) — PRD policy conflict analysis requires deep
 → Apply worker preamble from `../shared-v2/worker-preamble.md` with:
 - `{TEAM_NAME}` = `"prd-policy-review-{short-id}"`
 - `{WORKER_NAME}` = `"{perspective-slug}-analyst"`
-- `{WORK_ACTION}` = `"Use ontology-docs MCP tools to explore and read the ontology pool documents (see ONTOLOGY SCOPE below), then cross-reference PRD sections against docs to find policy conflicts/ambiguities"`
+- `{WORK_ACTION}` = `"Use prism_docs tools to explore and read the ontology pool documents (see ONTOLOGY SCOPE below), then cross-reference PRD sections against docs to find policy conflicts/ambiguities"`
 
 Then include the ontology scope block:
 
@@ -180,13 +180,13 @@ Analyst behavior rules (include in prompt):
 - Report ONLY planning-level policy conflicts/ambiguities. Exclude dev implementation details.
 - Format: "PRD says X, but docs say Y" — always cite both sides.
 - Severity: CRITICAL (policy conflict, feature blocking) / HIGH (ambiguous, multiple interpretations) / MEDIUM (undefined, edge case)
-- MUST cite evidence source: ontology-docs filename:section, mcp-query:server:detail, url:section, or file:path:section.
+- MUST cite evidence source: prism_docs filename:section, mcp-query:server:detail, url:section, or file:path:section.
 
 == REPORT FORMAT ==
 Per issue:
 ### [{SEVERITY}-{N}] {Title}
 - **PRD states**: {what PRD defines}
-- **Existing policy**: {what ontology-docs says, filename:section}
+- **Existing policy**: {what prism_docs says, filename:section}
 - **Conflict/Ambiguity**: {why this is a problem}
 - **Decision needed**: checklist of items PM must decide
 ```
@@ -251,7 +251,7 @@ MUST NOT proceed until:
 MUST NOT proceed until ALL verified:
 
 - [ ] All analyst tasks in `completed` status
-- [ ] Every analyst cited evidence sources (ontology-docs, mcp-query, web, or file references)
+- [ ] Every analyst cited evidence sources (prism_docs, mcp-query, web, or file references)
 - [ ] DA evaluation complete (Step 3.6 exit gate passed)
 
 If ANY analyst incomplete → check via `TaskList`, send status query. Error: "Cannot synthesize: {analyst} not completed."
@@ -310,7 +310,7 @@ MUST: Report content in **{REPORT_LANGUAGE}** (detected in Phase 1.0).
 **Target**: {PRD title}
 **Analysis Date**: {date}
 **Method**: {N}-agent multi-perspective team ({N-1} perspective analysts + Devil's Advocate)
-**Reference Docs**: ontology-docs MCP ({file count} files referenced)
+**Reference Docs**: prism-mcp docs ({file count} files referenced)
 
 ---
 
@@ -345,7 +345,7 @@ Include in report:
 ### Report Rules
 
 - TOP 10 items MUST include `Decision needed` as checklist (`- [ ]`)
-- All issues MUST cite evidence source (ontology-docs filename:section, mcp-query:server:detail, url:section, or file:path:section)
+- All issues MUST cite evidence source (prism_docs filename:section, mcp-query:server:detail, url:section, or file:path:section)
 - Dev-level downgrade section MUST explain why PM decision is unnecessary
 
 ## Phase 6: Team Teardown
@@ -361,7 +361,7 @@ MUST verify before outputting report:
 - [ ] DA challenge-response loop completed (max 2 rounds)
 - [ ] All DA BLOCKING_QUESTIONs resolved (answered via tools, analysts, or user)
 - [ ] Every TOP 10 item has `Decision needed` checklist
-- [ ] Every issue has ontology-docs citation evidence
+- [ ] Every issue has prism_docs citation evidence
 - [ ] PRD contradictions section exists (state "None found" if 0)
 - [ ] Statistics summary numbers match actual issue counts
 - [ ] Ontology scope mapping section included in report
