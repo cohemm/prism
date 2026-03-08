@@ -3,7 +3,7 @@ name: setup
 description: Download and install the prism-mcp binary for your platform and register it as a user-scope MCP server
 version: 1.0.0
 user-invocable: true
-allowed-tools: Bash, Read, Write
+allowed-tools: Bash, Read, Write, AskUserQuestion
 ---
 
 # Prism MCP Setup
