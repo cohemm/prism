@@ -1,0 +1,96 @@
+{
+  "skill_name": "test-analyze",
+  "analyze_skill_path": "../analyze",
+  "config": {
+    "parallel": false,
+    "skip_ontology": true,
+    "auto_approve": true
+  },
+  "evals": [
+    {
+      "id": "auth-bypass",
+      "name": "Security: JWT 인증 우회 (실제 코드 + 가상 시나리오 혼합)",
+      "prompt": "우리 앱에서 비로그인 상태로 프리미엄 콘텐츠에 접근 가능한 보안 이슈가 발견됐어. 특정 API 엔드포인트에서 JWT 검증을 건너뛰는 것 같아. 분석해줘",
+      "target_codebase": "/Users/heechul/podo-backend",
+      "expected_domain": "security",
+      "expected_failure_type": "breach",
+      "description": "podo-backend에 JWT/SecurityConfig 관련 실제 코드는 존재하지만, '프리미엄 콘텐츠' 개념은 코드에 없음. 실제 보안 이슈(permitAll 과다, 내부 토큰 발급 엔드포인트 노출)는 찾을 수 있지만, 프리미엄 콘텐츠 접근 관련 findings는 코드 근거가 없어 verification score가 낮아야 함.",
+      "assertions": [
+        {"text": "Phase 0: uuidgen + state dir 생성", "type": "workflow_gate"},
+        {"text": "Phase 0.5: seed-analyst architect+opus spawn", "type": "workflow_gate"},
+        {"text": "Phase 0.5: seed-analysis.json에 dimensions.domain=security 포함", "type": "field_contract"},
+        {"text": "Phase 0.55: security archetype 매핑 + domain_archetype_match_enforced", "type": "data_flow"},
+        {"text": "Phase 0.55: security perspective 포함", "type": "field_contract"},
+        {"text": "Phase 0.55: security perspective opus/architect 일치", "type": "field_contract"},
+        {"text": "Phase 0.55: rules_applied 6개 필드 모두 존재", "type": "field_contract"},
+        {"text": "Phase 0.6: perspectives.json에 approved=true 추가", "type": "data_flow"},
+        {"text": "Phase 0.7: ontology scope (skip or N/A)", "type": "workflow_gate"},
+        {"text": "Phase 0.8: context.json에 investigation_loops:0 + report_language 포함", "type": "field_contract"},
+        {"text": "Phase 1: Security Lens + finding-protocol + {KEY_QUESTIONS} 주입", "type": "data_flow"},
+        {"text": "Phase 1: findings.json에 analyst, findings[] 필드 존재", "type": "field_contract"},
+        {"text": "Phase 2A: finding analysts shutdown + drain", "type": "workflow_gate"},
+        {"text": "Phase 2B: verifier + prism_interview + {summary} + {perspective-id} 교체", "type": "data_flow"},
+        {"text": "Phase 2B: analyst-findings.md 생성", "type": "field_contract"},
+        {"text": "Phase 3: report.md 한국어로 작성", "type": "data_flow"}
+      ],
+      "contract_checks": [
+        {
+          "name": "seed → perspectives: dimensions 전달",
+          "producer": "seed-analysis.json",
+          "consumer": "perspectives.json",
+          "fields": ["dimensions.domain", "dimensions.failure_type", "dimensions.complexity"],
+          "rule": "consumer의 perspective 선택이 producer의 dimensions 값에 기반해야 함"
+        },
+        {
+          "name": "perspectives → Phase 1: spawn 파라미터",
+          "producer": "perspectives.json",
+          "consumer": "findings.json",
+          "fields": ["perspectives[].id", "perspectives[].model", "perspectives[].agent_type", "perspectives[].key_questions"],
+          "rule": "각 findings.json의 analyst 필드가 perspectives[].id와 일치"
+        },
+        {
+          "name": "seed → context: research_summary",
+          "producer": "seed-analysis.json",
+          "consumer": "context.json",
+          "fields": ["research.findings", "research.files_examined"],
+          "rule": "context.json.research_summary.key_findings가 seed-analysis.json.research.findings에서 파생"
+        },
+        {
+          "name": "context → Phase 3: report_language",
+          "producer": "context.json",
+          "consumer": "report.md",
+          "fields": ["report_language"],
+          "rule": "report가 context.json.report_language에 지정된 언어로 작성됨"
+        },
+        {
+          "name": "findings → verifier: findings 전달",
+          "producer": "findings.json",
+          "consumer": "interview.json",
+          "fields": ["findings[].finding", "findings[].evidence", "findings[].severity"],
+          "rule": "verifier가 findings.json을 읽고 prism_interview에서 해당 내용을 검증"
+        },
+        {
+          "name": "perspectives → verifier: perspective-id 일치",
+          "producer": "perspectives.json",
+          "consumer": "verified-findings-{perspective-id}.md",
+          "fields": ["perspectives[].id"],
+          "rule": "각 verified-findings 파일명이 perspectives[].id와 일치"
+        }
+      ],
+      "score_expectations": [
+        {
+          "perspective_pattern": "security",
+          "expect": "mixed",
+          "reason": "실제 JWT/SecurityConfig 이슈는 코드에 있어 일부 findings는 높은 score. 하지만 '프리미엄 콘텐츠' 관련 findings는 코드 근거 없음",
+          "threshold_note": "전체 weighted_total이 만점(10)이 아닐 것으로 예상"
+        },
+        {
+          "perspective_pattern": "timeline",
+          "expect": "low_to_mixed",
+          "reason": "프리미엄 콘텐츠 접근 이슈의 타임라인은 코드에서 추적 불가",
+          "max_expected_score": 7.0
+        }
+      ]
+    }
+  ]
+}
