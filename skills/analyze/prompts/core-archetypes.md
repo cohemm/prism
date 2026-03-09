@@ -11,7 +11,7 @@ All prompts use these placeholders — replace at spawn time:
 - `{ONTOLOGY_SCOPE}` — full-pool scoped reference from Phase 0.7
 - `{SHORT_ID}` — session short ID
 
-**Analyst protocol:** All analysts MUST follow `prompts/verification-protocol.md` (data source constraint, self-verification, task lifecycle) — injected into this prompt by the orchestrator at spawn time.
+**Analyst protocol:** All analysts follow either `prompts/finding-protocol.md` (finding phase) or `prompts/verification-protocol.md` (verification phase) — injected into this prompt by the orchestrator at spawn time.
 
 ---
 
