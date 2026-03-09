@@ -21,7 +21,7 @@ Persist phase outputs to `~/.prism/state/analyze-{short-id}/` (created in Phase 
 | `perspectives.json` | Perspective Generator (Phase 0.55), updated by Orchestrator (Phase 0.6) | Orchestrator (Phase 0.6, 0.8, 1, 3) |
 | `context.json` | Orchestrator (Phase 0.8) | Orchestrator (Phase 1 `{CONTEXT}` injection, Phase 3 re-entry) |
 | `~/.prism/state/analyze-{short-id}/perspectives/{perspective-id}/findings.json` | Analyst (Phase 1 — Finding Session) | Analyst (Phase 2 — Verification Session), MCP prism_interview |
-| `verified-findings-{perspective-id}.md` | Orchestrator (Phase 2) | Phase 3 synthesis |
+| `verified-findings-{perspective-id}.md` | Orchestrator (Phase 2 Stage B) | Phase 3 synthesis |
 | `analyst-findings.md` | Orchestrator (Phase 2 exit) | Phase 3 synthesis |
 | `prior-iterations.md` | Each re-entry (append) | All agents (cumulative) |
 | `ontology-scope.json` | Orchestrator (Phase 0.7) | Analysts (via `{ONTOLOGY_SCOPE}` injection) |

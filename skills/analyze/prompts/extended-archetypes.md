@@ -18,7 +18,7 @@ All prompts use these placeholders — replace at spawn time:
 - `{ONTOLOGY_SCOPE}` — full-pool scoped reference from Phase 0.7
 - `{SHORT_ID}` — session short ID
 
-**Analyst protocol:** All analysts MUST follow `prompts/verification-protocol.md` (data source constraint, self-verification, task lifecycle) — injected into this prompt by the orchestrator at spawn time.
+**Analyst protocol:** All analysts follow either `prompts/finding-protocol.md` (finding phase) or `prompts/verification-protocol.md` (verification phase) — injected into this prompt by the orchestrator at spawn time.
 
 ---
 
@@ -447,6 +447,6 @@ For novel failure modes. Compose using Tier 2 Template with:
 2. Mission statement
 3. ≥3 analysis tasks
 4. Defined output sections
-5. Follow `prompts/verification-protocol.md` (injected by orchestrator)
+5. Follow the protocol injected by the orchestrator (finding-protocol.md or verification-protocol.md)
 
 MCP verification (prism_interview) will specifically challenge whether the custom perspective findings are well-supported.
