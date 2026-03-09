@@ -13,7 +13,7 @@ Later phases (Phase 2+) are in `docs/later-phases.md`. Read that file ONLY when 
 
 ## Artifact Persistence
 
-Persist phase outputs to `~/.prism/state/analyze-{short-id}/` (created in Phase 0, Step 0.4). On deeper investigation re-entry, agents MUST `Read` artifact files — do NOT rely solely on prompt context.
+Persist phase outputs to `~/.prism/state/analyze-{short-id}/` (created in Phase 0, Step 0.2). On deeper investigation re-entry, agents MUST `Read` artifact files — do NOT rely solely on prompt context.
 
 | File | Written | Read By |
 |------|---------|---------|

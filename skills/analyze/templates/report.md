@@ -70,8 +70,8 @@ Fill all sections. Write "N/A" if truly irrelevant — do NOT leave sections emp
 ### Perspectives and Rationale
 [Why each perspective was selected]
 
-### Ambiguity Score Details
-{Full JSON scores from each scorer, for reference}
+### Verification Score Details
+{Full scoring data from each verifier's prism_interview session, for reference}
 
 ### Ontology Scope Mapping
 | Perspective | Mapped Ontology Docs | Reasoning |
