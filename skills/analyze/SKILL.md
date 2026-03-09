@@ -318,7 +318,7 @@ Task(
   team_name="analyze-{short-id}",
   model="{model}",
   run_in_background=true,
-  prompt="{analyst prompt with {CONTEXT}, {ONTOLOGY_SCOPE}, {SHORT_ID} replaced}"
+  prompt="{analyst prompt with {CONTEXT}, {ONTOLOGY_SCOPE}, {SHORT_ID}, {perspective-id}, {KEY_QUESTIONS} replaced}"
 )
 ```
 
@@ -328,6 +328,7 @@ MUST replace `{CONTEXT}` with a text summary derived from `context.json`: format
 MUST replace `{ONTOLOGY_SCOPE}` by reading `ontology-scope.json` and generating a text block per Phase B of ontology-scope-mapping.md (or "N/A" if not found).
 MUST replace `{SHORT_ID}` with the session's `{short-id}`. Analysts construct their own session path: `analyze-{short-id}/perspectives/{perspective-id}`.
 MUST replace `{KEY_QUESTIONS}` from `perspectives.json` for the matching perspective's `key_questions` array, formatted as a numbered list.
+MUST replace `{perspective-id}` with the perspective's `id` field from `perspectives.json`. This value appears in findings paths and SendMessage output in finding-protocol.md.
 
 ### Phase 1 Exit Gate
 
