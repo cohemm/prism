@@ -291,7 +291,7 @@ MUST read prompt files before spawning. Files are relative to this SKILL.md's di
 1. Read archetype section from `prompts/core-archetypes.md` or `prompts/extended-archetypes.md`
 2. Read `prompts/finding-protocol.md`
 3. Concatenate: `[worker preamble] + [archetype prompt] + [finding protocol]`
-4. Replace placeholders (`{CONTEXT}`, `{ONTOLOGY_SCOPE}`, `{SHORT_ID}`, `{perspective-id}`, `{KEY_QUESTIONS}`)
+4. Replace placeholders (`{CONTEXT}`, `{ONTOLOGY_SCOPE}`, `{SHORT_ID}`, `{perspective-id}`, `{KEY_QUESTIONS}`, `{ORIGINAL_INPUT}`)
 5. Spawn via `Task(...)`
 
 | Agent | Prompt File | Section |
@@ -331,6 +331,7 @@ MUST replace `{ONTOLOGY_SCOPE}` by reading `ontology-scope.json` and generating 
 MUST replace `{SHORT_ID}` with the session's `{short-id}`. Analysts construct their own session path: `analyze-{short-id}/perspectives/{perspective-id}`.
 MUST replace `{KEY_QUESTIONS}` from `perspectives.json` for the matching perspective's `key_questions` array, formatted as a numbered list.
 MUST replace `{perspective-id}` with the perspective's `id` field from `perspectives.json`. This value appears in findings paths and SendMessage output in finding-protocol.md.
+MUST replace `{ORIGINAL_INPUT}` with `context.json`'s `summary` field. This is written into findings.json so the verification interviewer can evaluate relevance to the original problem.
 
 ### Phase 1 Exit Gate
 
