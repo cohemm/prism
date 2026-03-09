@@ -449,4 +449,4 @@ For novel failure modes. Compose using Tier 2 Template with:
 4. Defined output sections
 5. Follow the protocol injected by the orchestrator (finding-protocol.md or verification-protocol.md)
 
-MCP verification (prism_interview) will specifically challenge whether the custom perspective findings are well-supported.
+During the verification phase, MCP verification (prism_interview) will specifically challenge whether the custom perspective findings are well-supported.

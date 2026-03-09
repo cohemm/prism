@@ -53,14 +53,18 @@ Each analyst gets a new session for Socratic verification. The new session reads
 
 For each perspective in `perspectives.json`, spawn a new verification session.
 
+Create verifier task via `TaskCreate`, pre-assign owner via `TaskUpdate(owner="{perspective-id}-verifier")`, then spawn.
+
 MUST read prompt files before spawning. Files are relative to the SKILL.md directory.
 
-**Prompt assembly order:** For each analyst:
-1. Read archetype section from `prompts/core-archetypes.md` or `prompts/extended-archetypes.md` (same archetype as Phase 1)
+**Prompt assembly order:** For each verifier:
+1. Read archetype section from `prompts/core-archetypes.md` or `prompts/extended-archetypes.md` (same archetype as Phase 1 — use the same `agent_type` and `model` from the archetype table)
 2. Read `prompts/verification-protocol.md`
 3. Concatenate: `[worker preamble] + [archetype prompt] + [verification protocol]`
-4. Replace placeholders (`{CONTEXT}`, `{ONTOLOGY_SCOPE}`, `{SHORT_ID}`)
+4. Replace placeholders (`{CONTEXT}`, `{ONTOLOGY_SCOPE}`, `{SHORT_ID}`, `{perspective-id}`)
 5. Spawn via `Task(...)`
+
+> `{perspective-id}` is derived from the perspective's `id` field in `perspectives.json`. The orchestrator MUST replace it in both the archetype prompt and the verification protocol before spawning.
 
 **Spawn pattern:**
 
@@ -71,14 +75,14 @@ Task(
   team_name="analyze-{short-id}",
   model="{model}",
   run_in_background=true,
-  prompt="{verification prompt with {CONTEXT}, {ONTOLOGY_SCOPE}, {SHORT_ID} replaced}"
+  prompt="{verification prompt with {CONTEXT}, {ONTOLOGY_SCOPE}, {SHORT_ID}, {perspective-id} replaced}"
 )
 ```
 
 > Apply worker preamble from `../shared-v3/worker-preamble.md` with:
 - `{TEAM_NAME}` = `"analyze-{short-id}"`
 - `{WORKER_NAME}` = `"{perspective-id}-verifier"`
-- `{WORK_ACTION}` = `"Read your findings from findings.json. Run self-verification via MCP tools (prism_interview). Re-investigate with tools as needed to answer interview questions. Report verified findings via SendMessage to team-lead."`
+- `{WORK_ACTION}` = `"Read your findings from ~/.prism/state/analyze-{SHORT_ID}/perspectives/{perspective-id}/findings.json. Run self-verification via MCP tools (prism_interview). Re-investigate with tools as needed to answer interview questions. Report verified findings via SendMessage to team-lead."`
 
 MUST replace `{CONTEXT}` from `context.json`.
 MUST replace `{ONTOLOGY_SCOPE}` by reading `ontology-scope.json` and generating a text block per Phase B of ontology-scope-mapping.md (or "N/A" if not found).
@@ -105,6 +109,8 @@ After each verifier completes:
 
 For each completed verifier:
 - `SendMessage(type: "shutdown_request", recipient: "{perspective-id}-verifier", content: "Verification complete.")`
+
+Wait for shutdown acknowledgment, then drain task outputs again.
 
 #### Step 2B.5: Persist Verified Results
 

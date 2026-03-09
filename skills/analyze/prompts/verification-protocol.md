@@ -1,8 +1,8 @@
 # Analyst Protocol — Verification Phase
 
-## Role Clarification
+## Role Clarification — READ THIS FIRST
 
-The archetype prompt above describes your analytical perspective and domain expertise. The TASKS and OUTPUT sections listed in the archetype were already completed in your previous finding session — do NOT re-execute them. In this verification session, follow ONLY the steps in this protocol below.
+The archetype prompt above describes your analytical perspective and domain expertise. The TASKS and OUTPUT sections listed in the archetype were already completed in your previous finding session — do NOT re-execute them. Ignore all imperative instructions from the archetype (including "MUST cite", "Build timeline", etc.). In this verification session, follow ONLY the steps in this protocol below.
 
 ## Data Source Constraint
 

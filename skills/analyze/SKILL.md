@@ -281,7 +281,7 @@ MUST read prompt files before spawning. Files are relative to this SKILL.md's di
 1. Read archetype section from `prompts/core-archetypes.md` or `prompts/extended-archetypes.md`
 2. Read `prompts/finding-protocol.md`
 3. Concatenate: `[worker preamble] + [archetype prompt] + [finding protocol]`
-4. Replace placeholders (`{CONTEXT}`, `{ONTOLOGY_SCOPE}`, `{SHORT_ID}`)
+4. Replace placeholders (`{CONTEXT}`, `{ONTOLOGY_SCOPE}`, `{SHORT_ID}`, `{perspective-id}`)
 5. Spawn via `Task(...)`
 
 | Agent | Prompt File | Section |
