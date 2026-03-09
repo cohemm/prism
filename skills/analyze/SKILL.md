@@ -75,6 +75,8 @@ Severity and status are NOT collected here — the seed-analyst will determine t
 TeamCreate(team_name: "analyze-{short-id}", description: "Analysis: {summary}")
 ```
 
+> Replace `{summary}` with a short (≤10 word) summary derived from the user's description (Phase 0.1). `context.json` is not yet available at this point.
+
 ### Step 0.5.2: Spawn Seed Analyst
 
 Read `prompts/seed-analyst.md` (relative to this SKILL.md).
