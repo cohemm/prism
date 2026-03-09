@@ -33,6 +33,7 @@ Write your findings to `~/.prism/state/analyze-{SHORT_ID}/perspectives/{perspect
 ```json
 {
   "analyst": "{perspective-id}",
+  "summary": "{SUMMARY}",
   "findings": [
     {
       "finding": "description",
@@ -42,6 +43,8 @@ Write your findings to `~/.prism/state/analyze-{SHORT_ID}/perspectives/{perspect
   ]
 }
 ```
+
+`{SUMMARY}` is the original problem summary from context.json. Copy it exactly — the verification interviewer uses this to evaluate whether your findings address the original problem.
 
 #### 3. Report Findings
 

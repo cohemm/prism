@@ -331,6 +331,7 @@ MUST replace `{ONTOLOGY_SCOPE}` by reading `ontology-scope.json` and generating 
 MUST replace `{SHORT_ID}` with the session's `{short-id}`. Analysts construct their own session path: `analyze-{short-id}/perspectives/{perspective-id}`.
 MUST replace `{KEY_QUESTIONS}` from `perspectives.json` for the matching perspective's `key_questions` array, formatted as a numbered list.
 MUST replace `{perspective-id}` with the perspective's `id` field from `perspectives.json`. This value appears in findings paths and SendMessage output in finding-protocol.md.
+MUST replace `{SUMMARY}` with `context.json`'s `summary` field. This is written into findings.json so the verification interviewer can evaluate relevance to the original problem.
 
 ### Phase 1 Exit Gate
 
