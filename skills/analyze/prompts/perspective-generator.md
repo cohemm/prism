@@ -86,6 +86,7 @@ These rules are NON-NEGOTIABLE. Check each one and enforce:
 | Evidence-backed only | Always | MUST NOT include perspectives without supporting evidence in `research.findings` |
 | Minimum perspectives | Always | MUST have ≥2 perspectives |
 | Complexity scaling | `dimensions.complexity == "single-cause"` | 2-3 perspectives. `"multi-factor"` → 3-5 perspectives |
+| Domain-archetype match | Archetype mapping row in Step 2 matches seed analysis dimensions | The domain-specific archetype (first in the matched row) MUST be included |
 
 After initial selection, walk through each rule and verify compliance. If any rule is violated, fix it before proceeding.
 

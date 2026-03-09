@@ -146,7 +146,7 @@ Integrate all verified analyst findings. Read from `~/.prism/state/analyze-{shor
 
 ### Step 3.2
 
-Read `templates/report.md` and fill all sections with synthesized findings.
+Read `templates/report.md` and fill all sections with synthesized findings. Write the report in the language specified by `context.json.report_language`.
 
 ### Step 3.3
 
