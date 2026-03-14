@@ -282,7 +282,7 @@ Write `~/.prism/state/analyze-{short-id}/context.json`:
 {
   "summary": "Topic description and key context",
   "research_summary": {
-    "key_findings": ["finding1", "finding2"],
+    "key_findings": ["area1: description1", "area2: description2"],
     "files_examined": ["path1", "path2"],
     "key_areas": ["area1", "area2"]
   },
