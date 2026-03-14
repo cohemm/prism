@@ -72,7 +72,7 @@ MUST read prompt files before spawning. Files are relative to the SKILL.md direc
 
 ```
 Task(
-  subagent_type="oh-my-claudecode:{agent_type}",
+  subagent_type="prism:finder",
   name="{perspective-id}-verifier",
   team_name="analyze-{short-id}",
   model="{model}",

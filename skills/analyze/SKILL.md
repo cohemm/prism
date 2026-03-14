@@ -111,7 +111,7 @@ Create seed-analyst task via `TaskCreate`, pre-assign owner via `TaskUpdate(owne
 
 ```
 Task(
-  subagent_type="oh-my-claudecode:architect",
+  subagent_type="prism:finder",
   name="seed-analyst",
   team_name="analyze-{short-id}",
   model="opus",
@@ -170,7 +170,7 @@ Create task via `TaskCreate`, pre-assign owner via `TaskUpdate(owner="perspectiv
 
 ```
 Task(
-  subagent_type="oh-my-claudecode:architect",
+  subagent_type="prism:finder",
   name="perspective-generator",
   team_name="analyze-{short-id}",
   model="opus",
@@ -344,7 +344,7 @@ Read `perspectives.json` to get each perspective's dynamically generated prompt.
 
 ```
 Task(
-  subagent_type="oh-my-claudecode:{agent_type}",
+  subagent_type="prism:finder",
   name="{perspective-id}-analyst",
   team_name="analyze-{short-id}",
   model="{model}",

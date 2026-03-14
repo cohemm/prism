@@ -3,7 +3,7 @@
 Spawn as:
 ```
 Task(
-  subagent_type="oh-my-claudecode:architect",
+  subagent_type="prism:finder",
   name="seed-analyst",
   team_name="analyze-{short-id}",
   model="opus",

@@ -3,7 +3,7 @@
 Spawn as:
 ```
 Task(
-  subagent_type="oh-my-claudecode:architect",
+  subagent_type="prism:finder",
   name="perspective-generator",
   team_name="analyze-{short-id}",
   model="opus",
@@ -61,10 +61,10 @@ Based on the seed analyst's findings, determine the optimal set of analysis pers
 
 Choose model and agent type based on the perspective's complexity and depth:
 
-| Complexity | Model | Agent Type | When to Use |
-|------------|-------|------------|-------------|
-| Deep cross-referencing, complex reasoning | `opus` | `architect` | Policy conflicts, root cause analysis, security analysis |
-| Standard investigation, pattern matching | `sonnet` | `architect-medium` | Timeline reconstruction, impact assessment, straightforward analysis |
+| Complexity | Model | When to Use |
+|------------|-------|-------------|
+| Deep cross-referencing, complex reasoning | `opus` | Policy conflicts, root cause analysis, security analysis |
+| Standard investigation, pattern matching | `sonnet` | Timeline reconstruction, impact assessment, straightforward analysis |
 
 ### Perspective Quality Gate
 
@@ -121,7 +121,6 @@ Write the following JSON to `~/.prism/state/analyze-{SHORT_ID}/perspectives.json
         "Another specific question"
       ],
       "model": "opus|sonnet",
-      "agent_type": "architect|architect-medium",
       "prompt": {
         "role": "You are the {ROLE_NAME}.",
         "investigation_scope": "Specific scope description for this case",
@@ -147,7 +146,6 @@ Write the following JSON to `~/.prism/state/analyze-{SHORT_ID}/perspectives.json
 - `perspectives[].scope`: MUST be specific to this case, not generic
 - `perspectives[].key_questions`: 2-4 questions, each grounded in seed analyst findings
 - `perspectives[].model`: Choose based on complexity (see Model & Agent Type Selection)
-- `perspectives[].agent_type`: Match to model selection
 - `perspectives[].prompt.role`: Single sentence starting with "You are the..."
 - `perspectives[].prompt.investigation_scope`: Detailed scope description
 - `perspectives[].prompt.tasks`: Numbered list (3-6 tasks), each grounded in specific seed findings
