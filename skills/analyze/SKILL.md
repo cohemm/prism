@@ -123,7 +123,7 @@ Task(
 > Apply worker preamble from `../shared-v3/worker-preamble.md` with:
 - `{TEAM_NAME}` = `"analyze-{short-id}"`
 - `{WORKER_NAME}` = `"seed-analyst"`
-- `{WORK_ACTION}` = `"Actively investigate using available tools (Grep, Read, Bash, MCP). Research the topic and produce findings. Write findings to seed-analysis.json. Report via SendMessage."`
+- `{WORK_ACTION}` = `"Actively investigate using available tools (Grep, Read, Bash, MCP). Map related code areas and systems. Write discoveries to seed-analysis.json. Report via SendMessage."`
 
 Placeholder replacements in seed-analyst prompt:
 - `{DESCRIPTION}` → Phase 0 description

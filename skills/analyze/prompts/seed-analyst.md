@@ -43,7 +43,7 @@ MUST actively investigate using available tools. Do NOT rely solely on the descr
 2. `Grep` codebase for each identifier — note file:line references
 3. `Read` relevant source files to understand the context — but **stop at understanding the area, do NOT chase causation chains**
 4. When you discover a related area, **note it and pivot to search for other distinct areas** rather than diving deeper into the same one
-5. If MCP tools available (`ToolSearch` for "prism_docs", "sentry", "grafana", "loki", "clickhouse", "ontology-docs"): query for related data
+5. If MCP tools available (`ToolSearch` for "prism_docs", "sentry", "tempo", "clickhouse", "ontology-docs"): query for related data
 6. `Bash(git log --oneline --since="7 days ago")` to check for recent changes in affected areas if relevant
 7. Record ALL discovered areas with evidence sources
 
