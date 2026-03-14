@@ -41,8 +41,8 @@ MUST actively investigate using available tools. Do NOT rely solely on the descr
 
 1. Start with the topic — extract concrete identifiers (file paths, service names, error messages, policy names, feature names, etc.)
 2. `Grep` codebase for each identifier — note file:line references
-3. `Read` relevant source files to understand the context — but **stop at understanding the area, do NOT chase causation chains**
-4. When you discover a related area, **note it and pivot to search for other distinct areas** rather than diving deeper into the same one
+3. `Read` relevant source files to understand the area's role
+4. Note the area and pivot to search for other distinct areas
 5. If MCP tools available (`ToolSearch` for "prism_docs", "sentry", "tempo", "clickhouse", "ontology-docs"): query for related data
 6. `Bash(git log --oneline --since="7 days ago")` to check for recent changes in affected areas if relevant
 7. Record ALL discovered areas with evidence sources
@@ -55,7 +55,7 @@ MUST actively investigate using available tools. Do NOT rely solely on the descr
 
 ## STEP 2: Research Summary
 
-Synthesize your discoveries into a structured summary that will help the perspective generator determine the best analysis angles. Focus on **listing distinct areas/modules/systems** you discovered — NOT on explaining why something is broken. The perspective generator needs a broad map, not a diagnosis.
+Synthesize your discoveries into a structured summary that will help the perspective generator determine the best analysis angles.
 
 ---
 
@@ -86,10 +86,10 @@ Write the following JSON to `~/.prism/state/analyze-{SHORT_ID}/seed-analysis.jso
 
 ### Field Rules
 - `topic`: Copy the original topic description exactly
-- `research.summary`: High-level summary to orient the perspective generator — describe the landscape, not a diagnosis
-- `research.findings`: Every finding MUST have a concrete `source` — no unsourced claims. Describe **what each area is**, not why it's broken
+- `research.summary`: High-level summary to orient the perspective generator
+- `research.findings`: Every finding MUST have a concrete `source` — no unsourced claims
 - `research.findings[].area`: A distinct code area, module, or system name
-- `research.findings[].description`: What this area does and how it relates to the topic — NOT a root cause claim
+- `research.findings[].description`: What this area does and how it relates to the topic
 - `research.key_areas`: List the main domains/areas discovered during research (helps perspective generator identify analysis angles)
 
 ---
