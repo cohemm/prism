@@ -134,7 +134,7 @@ Placeholder replacements in seed-analyst prompt:
 
 Wait for seed-analyst to send results via `SendMessage`. The message contains a JSON object with:
 - `topic`: original description
-- `research`: summary, findings (with source and tool_used), key_areas, files_examined, mcp_queries
+- `research`: summary, findings (with area, description, source, and tool_used), key_areas, files_examined, mcp_queries
 
 The seed analyst also writes this JSON to `~/.prism/state/analyze-{short-id}/seed-analysis.json`.
 
