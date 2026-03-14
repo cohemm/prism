@@ -3,7 +3,7 @@
 Spawn as:
 ```
 Task(
-  subagent_type="finder",
+  subagent_type="prism:finder",
   name="perspective-generator",
   team_name="analyze-{short-id}",
   model="opus",
