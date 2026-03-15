@@ -25,10 +25,13 @@ fi
 python3 -c "
 import json, sys
 
-with open('$PERSPECTIVES_FILE', 'r') as f:
+perspectives_file = sys.argv[1]
+injection_file = sys.argv[2]
+
+with open(perspectives_file, 'r') as f:
     data = json.load(f)
 
-with open('$INJECTION_FILE', 'r') as f:
+with open(injection_file, 'r') as f:
     injection = json.load(f)
 
 if not isinstance(injection, list):
@@ -37,8 +40,8 @@ if not isinstance(injection, list):
 
 data['perspectives'].extend(injection)
 
-with open('$PERSPECTIVES_FILE', 'w') as f:
+with open(perspectives_file, 'w') as f:
     json.dump(data, f, indent=2, ensure_ascii=False)
 
 print(f'Merged {len(injection)} injected perspective(s) into perspectives.json')
-"
+" "$PERSPECTIVES_FILE" "$INJECTION_FILE"

@@ -49,7 +49,7 @@ Persist phase outputs to `~/.prism/state/analyze-{short-id}/` (created in Phase 
 | `verification-log.json` | Orchestrator (Phase 2 Step 2B.6) | Phase 3 synthesis (Socratic Verification Summary section) |
 | `prior-iterations.md` | Each re-entry (append) | All agents (cumulative) |
 | `ontology-scope.json` | Orchestrator (Phase 0.7) | Analysts (via `{ONTOLOGY_SCOPE}` injection) |
-| `perspective_injection.json` | Wrapper skill (optional, before analyze invocation) | Perspective Generator (Phase 0.55) |
+| `perspective_injection.json` | Wrapper skill (optional, before analyze invocation) | Merge script (Step 0.55.5) |
 
 ## Prerequisite: Agent Team Mode (HARD GATE)
 
