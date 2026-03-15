@@ -133,7 +133,7 @@ Task(
 **CRITICAL: Do NOT add `run_in_background=true`.** Must wait for post-processing results.
 
 Placeholder replacements:
-- `{ANALYZE_STATE_DIR}` → analyze result directory path identified in Step 1.5
+- `{ANALYZE_STATE_DIR}` → analyze result directory path identified in Step 1.4
 - `{PRD_FILE_PATH}` → PRD file absolute path
 - `{PRD_STATE_DIR}` → `~/.prism/state/prd-{short-id}`
 - `{REPORT_LANGUAGE}` → language determined in Phase 0.3

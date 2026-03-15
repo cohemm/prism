@@ -209,10 +209,17 @@ Same as Step 0.5.5 — drain all completed background task outputs via `TaskList
 
 ### Step 0.55.5: Merge Injected Perspectives
 
-Check if `~/.prism/state/analyze-{short-id}/perspective_injection.json` exists.
+After perspective generator completes and `perspectives.json` is written, run the merge script:
 
-- **File exists**: Read it. The file contains an array of perspective objects in the same format as `perspectives.json`'s `perspectives` array. Append all injected perspectives to the `perspectives` array in `perspectives.json` and write the updated file. Do NOT apply the quality gate to injected perspectives — they are unconditionally included.
-- **File does not exist**: Skip this step. No action needed.
+```bash
+bash {SKILL_DIR}/scripts/merge-perspective-injection.sh ~/.prism/state/analyze-{short-id}
+```
+
+> Determine `{SKILL_DIR}` as the absolute path of the directory containing this SKILL.md via `Bash`.
+
+This script is deterministic and safe:
+- If `perspective_injection.json` does not exist → no-op (silent exit)
+- If it exists → appends injected perspectives to `perspectives.json`'s `perspectives` array
 
 ### Phase 0.55 Exit Gate
 
@@ -220,7 +227,7 @@ MUST NOT proceed until:
 
 - [ ] Perspective generator results received → ERROR: "Phase 0.55 blocked: no SendMessage from perspective-generator. Run TaskList."
 - [ ] `perspectives.json` written → ERROR: "File missing at ~/.prism/state/analyze-{short-id}/perspectives.json"
-- [ ] Injected perspectives merged (if `perspective_injection.json` exists) → ERROR: "Run Step 0.55.5 to merge injected perspectives."
+- [ ] Merge script executed → ERROR: "Run Step 0.55.5: bash {SKILL_DIR}/scripts/merge-perspective-injection.sh ~/.prism/state/analyze-{short-id}"
 - [ ] Perspective generator shut down → ERROR: "Send shutdown_request to perspective-generator."
 - [ ] All background task outputs drained → ERROR: "Run TaskList → TaskOutput for each completed task."
 
