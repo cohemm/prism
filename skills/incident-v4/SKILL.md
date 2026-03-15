@@ -32,10 +32,11 @@ Extract the incident description from `$ARGUMENTS`.
 uuidgen | tr '[:upper:]' '[:lower:]' | cut -c1-8
 ```
 
-Generate ONCE, reuse throughout. Create state directory:
+Generate ONCE, reuse throughout. Create state directories for both incident and analyze (shared session ID):
 
 ```bash
 mkdir -p ~/.prism/state/incident-{short-id}
+mkdir -p ~/.prism/state/analyze-{short-id}
 ```
 
 ### Step 0.3: Language Detection
@@ -76,18 +77,38 @@ Write the following JSON to `~/.prism/state/incident-{short-id}/analyze-config.j
   "input_context": "{INCIDENT_DESCRIPTION with screenshot paths if any}",
   "report_template": "{SKILL_DIR}/templates/report.md",
   "seed_hints": "This is an incident/outage analysis. Investigate root cause, contributing factors, and timeline. One perspective SHOULD focus on UX impact — analyze how the incident affected end users' experience, what users saw or experienced during the incident, and how the implementation caused user-facing problems. Other perspectives should cover technical root cause, system architecture implications, and operational gaps. Use available tools (Grep, Read, Bash, MCP) to trace the incident through the codebase.",
-  "ontology_mode": "optional"
+  "ontology_mode": "optional",
+  "session_id": "{short-id}"
 }
 ```
 
 > Determine the absolute path of the directory containing this SKILL.md via `Bash`. Store it as `{SKILL_DIR}` for use in Step 2.1.
 
-### Step 1.3: Snapshot Before Analyze
+### Step 1.3: Write Perspective Injection
 
-Take a snapshot of existing analyze directories **before** invoking analyze:
+Write the UX impact perspective to `~/.prism/state/analyze-{short-id}/perspective_injection.json`. This file uses the same format as `perspectives.json`'s `perspectives` array. Analyze will unconditionally merge these into the generated perspectives.
 
-```bash
-ls -d ~/.prism/state/analyze-* 2>/dev/null > ~/.prism/state/incident-{short-id}/analyze-dirs-before.txt || touch ~/.prism/state/incident-{short-id}/analyze-dirs-before.txt
+```json
+[
+  {
+    "id": "ux-impact",
+    "name": "UX Impact Analysis",
+    "scope": "Analyze how the incident affected end users — what users experienced, which flows were broken, and how the technical failure manifested in the user interface",
+    "key_questions": [
+      "What did users see or experience during the incident?",
+      "Which user flows were affected and what was the blast radius?",
+      "How did the technical root cause translate into user-facing symptoms?"
+    ],
+    "model": "sonnet",
+    "prompt": {
+      "role": "You are the UX IMPACT ANALYST.",
+      "investigation_scope": "Analyze the incident from the end user's perspective. Trace how the technical failure propagated to the user interface. Identify affected user flows, error states users encountered, and the overall impact on user experience. Connect technical root causes to specific UX degradations.",
+      "tasks": "1. Identify all user-facing screens and flows affected by this incident. Use Grep and Read to find frontend components that depend on the affected backend systems.\n2. Trace the data flow from the failed backend component to the frontend rendering. Identify where null/error values propagate to UI elements.\n3. Determine what users actually saw during the incident — error messages, loading states, incorrect data, or missing functionality.\n4. Estimate the blast radius — which user segments were affected, and what percentage of users encountered the issue.\n5. Analyze whether the frontend has graceful degradation or error boundaries that mitigated the impact.",
+      "output_format": "## UX Impact Analysis\n\n### 1. Affected User Flows\n| # | Flow | Impact | Affected Users | Severity |\n|---|------|--------|---------------|----------|\n\n### 2. Technical Cause → UX Effect Mapping\n| Technical Cause | UX Effect | User Saw | Severity |\n|----------------|-----------|----------|----------|\n\n### 3. Blast Radius\n- **Affected user segments**: [details]\n- **Duration of impact**: [details]\n- **Severity distribution**: [CRITICAL/HIGH/MEDIUM breakdown]\n\n### 4. Frontend Resilience Assessment\n- Error boundaries present: [yes/no, details]\n- Graceful degradation: [yes/no, details]\n- User-facing error messages: [quality assessment]\n\n### 5. Recommendations\n| Priority | Action | Expected UX Improvement |"
+    },
+    "rationale": "Injected by incident-v4 wrapper to ensure UX impact is always analyzed as a dedicated perspective, connecting technical root causes to user-facing consequences."
+  }
+]
 ```
 
 ### Step 1.4: Invoke Analyze
@@ -100,26 +121,20 @@ Wait for analyze to complete. If analyze fails or the user cancels mid-execution
 
 Analyze internally handles:
 - Seed analyst investigation of incident and related code areas
-- Multi-perspective generation (including UX impact perspective guided by seed_hints)
+- Multi-perspective generation + merging injected UX perspective (from perspective_injection.json)
 - Per-perspective analyst spawning
 - Socratic verification of findings
 - Report generation
 
 ### Step 1.5: Locate Analyze Output
 
-After analyze completes, compare directories before and after to find the newly created analyze directory:
+The analyze state directory is already known: `~/.prism/state/analyze-{short-id}` (shared session ID).
 
-```bash
-comm -13 <(sort ~/.prism/state/incident-{short-id}/analyze-dirs-before.txt) <(ls -d ~/.prism/state/analyze-* 2>/dev/null | sort)
-```
+Verify the following files exist:
+- `~/.prism/state/analyze-{short-id}/analyst-findings.md` — verified analysis results
+- `~/.prism/state/analyze-{short-id}/verification-log.json` — Socratic verification scores (may not exist — this is tolerated because the post-processor has a 3-tier fallback for confidence scores)
 
-There should be exactly 1 new directory. If 0 → ERROR: "analyze did not create a state directory." If 2+ → select the most recent one.
-
-Verify the following files exist in that directory:
-- `analyst-findings.md` — verified analysis results
-- `verification-log.json` — Socratic verification scores (may not exist — this is tolerated because the post-processor has a fallback for confidence scores)
-
-Store this path as `{ANALYZE_STATE_DIR}`.
+Store `~/.prism/state/analyze-{short-id}` as `{ANALYZE_STATE_DIR}`.
 
 ### Phase 1 Exit Gate
 
