@@ -47,4 +47,9 @@ if [ ! -x "$BINARY" ]; then
   }
 fi
 
+# macOS: remove quarantine flag added by Gatekeeper when downloaded via marketplace
+if [ "$OS" = "darwin" ]; then
+  xattr -d com.apple.quarantine "$BINARY" 2>/dev/null || true
+fi
+
 exec "$BINARY" "$@"
