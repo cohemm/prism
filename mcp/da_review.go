@@ -44,8 +44,29 @@ type DAReviewResult struct {
 	RawOutput        string     `json:"raw_output"`
 }
 
-// severityKeywordRe detects severity keywords in raw output for parse failure detection.
-var severityKeywordRe = regexp.MustCompile(`(?i)\b(CRITICAL|MAJOR)\b`)
+// Package-level compiled regexes for DA markdown parsing.
+// Hoisted from parseDAFindings/parseDASummary to avoid recompilation on every call.
+var (
+	// severityKeywordRe detects severity keywords in raw output for parse failure detection.
+	severityKeywordRe = regexp.MustCompile(`(?i)\b(CRITICAL|MAJOR)\b`)
+
+	// Section headers: ## Challenged Framings, ## Missing Perspectives, etc.
+	sectionRe = regexp.MustCompile(`(?m)^## (Challenged Framings|Missing Perspectives|Bias Indicators|Alternative Framings)\s*$`)
+	// Finding titles: ### [title]
+	findingTitleRe = regexp.MustCompile(`(?m)^### (.+)$`)
+	// Fields within findings
+	claimRe         = regexp.MustCompile(`(?m)^-\s+\*\*Claim\*\*:\s*(.+)$`)
+	concernRe       = regexp.MustCompile(`(?m)^-\s+\*\*Concern\*\*:\s*(.+)$`)
+	confidenceRe    = regexp.MustCompile("(?m)^-\\s+\\*\\*Confidence\\*\\*:\\s*`?(HIGH|MEDIUM|LOW)`?")
+	severityRe      = regexp.MustCompile("(?m)^-\\s+\\*\\*Severity\\*\\*:\\s*`?(CRITICAL|MAJOR|MINOR)`?")
+	falsificationRe = regexp.MustCompile(`(?m)^-\s+\*\*Falsification test\*\*:\s*(.+)$`)
+	// Next ## header (for section boundary detection)
+	nextHeaderRe = regexp.MustCompile(`(?m)^## `)
+	// Summary fields
+	summaryConfRe  = regexp.MustCompile("(?m)^-\\s+\\*\\*Overall confidence\\*\\*:\\s*`?(HIGH|MEDIUM|LOW)`?\\s*[—–-]?\\s*(.*)")
+	summaryTopRe   = regexp.MustCompile(`(?m)^-\s+\*\*Top concerns\*\*:\s*(.+)`)
+	summaryHoldsRe = regexp.MustCompile(`(?m)^-\s+\*\*What holds up\*\*:\s*(.+)`)
+)
 
 // loadDASystemPrompt reads the devils-advocate.md from the agents directory.
 func loadDASystemPrompt() (string, error) {
@@ -113,19 +134,9 @@ func getRepoRoot() string {
 }
 
 // parseDAFindings extracts structured findings from DA markdown output using regex.
+// All regex patterns are compiled once at package level for performance.
 func parseDAFindings(raw string) []DAFinding {
 	var findings []DAFinding
-
-	// Match section headers: ## Challenged Framings, ## Missing Perspectives, etc.
-	sectionRe := regexp.MustCompile(`(?m)^## (Challenged Framings|Missing Perspectives|Bias Indicators|Alternative Framings)\s*$`)
-	// Match finding titles: ### [title]
-	findingTitleRe := regexp.MustCompile(`(?m)^### (.+)$`)
-	// Match fields within findings
-	claimRe := regexp.MustCompile(`(?m)^-\s+\*\*Claim\*\*:\s*(.+)$`)
-	concernRe := regexp.MustCompile(`(?m)^-\s+\*\*Concern\*\*:\s*(.+)$`)
-	confidenceRe := regexp.MustCompile("(?m)^-\\s+\\*\\*Confidence\\*\\*:\\s*`?(HIGH|MEDIUM|LOW)`?")
-	severityRe := regexp.MustCompile("(?m)^-\\s+\\*\\*Severity\\*\\*:\\s*`?(CRITICAL|MAJOR|MINOR)`?")
-	falsificationRe := regexp.MustCompile(`(?m)^-\s+\*\*Falsification test\*\*:\s*(.+)$`)
 
 	// Find all section positions
 	sectionMatches := sectionRe.FindAllStringSubmatchIndex(raw, -1)
@@ -143,7 +154,6 @@ func parseDAFindings(raw string) []DAFinding {
 			sectionEnd = sectionMatches[i+1][0]
 		} else {
 			// Find the next ## header that isn't one of the 4 sections
-			nextHeaderRe := regexp.MustCompile(`(?m)^## `)
 			remaining := raw[sectionStart:]
 			loc := nextHeaderRe.FindStringIndex(remaining)
 			if loc != nil {
@@ -204,18 +214,15 @@ func parseDAFindings(raw string) []DAFinding {
 }
 
 // parseDASummary extracts summary fields from DA markdown output.
+// All regex patterns are compiled once at package level for performance.
 func parseDASummary(raw string) (overallConfidence, topConcerns, whatHoldsUp string) {
-	confRe := regexp.MustCompile("(?m)^-\\s+\\*\\*Overall confidence\\*\\*:\\s*`?(HIGH|MEDIUM|LOW)`?\\s*[—–-]?\\s*(.*)")
-	topRe := regexp.MustCompile(`(?m)^-\s+\*\*Top concerns\*\*:\s*(.+)`)
-	holdsRe := regexp.MustCompile(`(?m)^-\s+\*\*What holds up\*\*:\s*(.+)`)
-
-	if m := confRe.FindStringSubmatch(raw); len(m) > 1 {
+	if m := summaryConfRe.FindStringSubmatch(raw); len(m) > 1 {
 		overallConfidence = m[1]
 	}
-	if m := topRe.FindStringSubmatch(raw); len(m) > 1 {
+	if m := summaryTopRe.FindStringSubmatch(raw); len(m) > 1 {
 		topConcerns = strings.TrimSpace(m[1])
 	}
-	if m := holdsRe.FindStringSubmatch(raw); len(m) > 1 {
+	if m := summaryHoldsRe.FindStringSubmatch(raw); len(m) > 1 {
 		whatHoldsUp = strings.TrimSpace(m[1])
 	}
 	return
@@ -270,12 +277,18 @@ func handleDAReview(ctx context.Context, request mcp.CallToolRequest) (*mcp.Call
 		return mcp.NewToolResultError("seed_analysis_path is required"), nil
 	}
 
-	// Path validation: restrict to ~/.prism/state/ or /tmp/ to prevent arbitrary file reads
+	// Path validation: restrict to ~/.prism/state/ or /tmp/ to prevent arbitrary file reads.
+	// Resolve symlinks to prevent bypass via ~/.prism/state/evil -> /etc/passwd.
 	cleanPath := filepath.Clean(seedAnalysisPath)
+	resolvedPath, err := filepath.EvalSymlinks(cleanPath)
+	if err != nil {
+		// File may not exist yet on first call — fall back to Clean'd path
+		resolvedPath = cleanPath
+	}
 	homeDir, _ := os.UserHomeDir()
 	prismStateDir := filepath.Join(homeDir, ".prism", "state")
-	if !strings.HasPrefix(cleanPath, prismStateDir) && !strings.HasPrefix(cleanPath, "/tmp/") {
-		return mcp.NewToolResultError(fmt.Sprintf("seed_analysis_path must be within %s or /tmp/, got: %s", prismStateDir, cleanPath)), nil
+	if !strings.HasPrefix(resolvedPath, prismStateDir) && !strings.HasPrefix(resolvedPath, "/tmp/") {
+		return mcp.NewToolResultError(fmt.Sprintf("seed_analysis_path must be within %s or /tmp/, got: %s", prismStateDir, resolvedPath)), nil
 	}
 
 	// Hard-stop: if round exceeds maxDARounds, return immediately without calling LLM
