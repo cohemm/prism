@@ -121,22 +121,40 @@ AskUserQuestion(
 ```
 
 #### Add URL
-1. Collect URL from user input
-2. Fetch content via `WebFetch`
-3. Extract: title, domain/topic, summary (1-2 lines), key topics (3-5 keywords)
-4. Cache the extracted summary for analyst prompt injection
-5. If fetch fails → mark as `unavailable` with reason
-6. Add to `WEB_ENTRIES[]`
-7. Return to Screen 2 (repeat loop)
+1. Ask the user for the URL:
+   ```
+   AskUserQuestion(
+     header: "Enter URL",
+     question: "Enter the URL to add:",
+     multiSelect: false,
+     options: []
+   )
+   ```
+2. If user gives empty answer or cancels → return to Screen 2 (repeat loop)
+3. Fetch content via `WebFetch`
+4. Extract: title, domain/topic, summary (1-2 lines), key topics (3-5 keywords)
+5. Cache the extracted summary for analyst prompt injection
+6. If fetch fails → mark as `unavailable` with reason
+7. Add to `WEB_ENTRIES[]`
+8. Return to Screen 2 (repeat loop)
 
 #### Add file path
-1. Collect file path from user input
-2. Read content via `Read`
-3. Extract: filename, domain/topic, summary (1-2 lines), key topics (3-5 keywords)
-4. Cache the extracted summary for analyst prompt injection
-5. If read fails → mark as `unavailable` with reason
-6. Add to `FILE_ENTRIES[]`
-7. Return to Screen 2 (repeat loop)
+1. Ask the user for the file path:
+   ```
+   AskUserQuestion(
+     header: "Enter File Path",
+     question: "Enter the file or directory path to add:",
+     multiSelect: false,
+     options: []
+   )
+   ```
+2. If user gives empty answer or cancels → return to Screen 2 (repeat loop)
+3. Read content via `Read`
+4. Extract: filename, domain/topic, summary (1-2 lines), key topics (3-5 keywords)
+5. Cache the extracted summary for analyst prompt injection
+6. If read fails → mark as `unavailable` with reason
+7. Add to `FILE_ENTRIES[]`
+8. Return to Screen 2 (repeat loop)
 
 #### None — proceed
 Exit loop.
