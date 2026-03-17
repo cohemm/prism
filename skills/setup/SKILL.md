@@ -3,7 +3,7 @@ name: setup
 description: Configure documentation directories for prism skills (ontology-docs.json)
 version: 2.0.0
 user-invocable: true
-allowed-tools: Bash, Read, Write, AskUserQuestion
+allowed-tools: Bash, Write, AskUserQuestion
 ---
 
 # Prism Setup

@@ -79,7 +79,7 @@ Discover available MCP servers that can provide queryable data.
 MCP tools follow the naming pattern `mcp__<server_name>__<tool_name>`. Use the `+` prefix query form to require this pattern in tool names — keyword search (e.g., `query="mcp"`) is unreliable and may return unrelated tools or miss MCP tools entirely.
 
 1. **Primary discovery:** Call `ToolSearch(query="+mcp__ server", max_results=500)` to find all MCP tools. The `+mcp__` prefix requires "mcp__" in tool names, ensuring only MCP tools are returned. `max_results=500` accommodates all tools across all servers (typically 15-30 tools per server × 14 servers).
-2. **Fallback — empty results:** If step 1 returns 0 tools, try `ToolSearch(query="select:mcp", max_results=500)`. If still 0, skip to Step 2b (no MCP servers available).
+2. **Fallback — empty results:** If step 1 returns 0 tools, try `ToolSearch(query="mcp__", max_results=500)` (keyword search without `+` prefix). If still 0, skip to Step 2b (no MCP servers available).
 3. **Completeness check:** If step 1 returns exactly `max_results` tools (500), results may be truncated. Re-run with `max_results=1000`.
 4. **Extract server names:** Parse each tool name matching `mcp__<server_name>__<tool_name>` and collect unique `<server_name>` values. Group tools by server.
 5. **Exclude builtin servers** — remove these from the discovered list:
@@ -138,13 +138,14 @@ AskUserQuestion(
   question: "{cumulative_list}Paste a URL or file path to add, or select Done.",
   multiSelect: false,
   options: [
-    {label: "Done", description: "Proceed with {total_added} external source(s)"}  // "Proceed without external sources" when total_added == 0
+    {label: "Done", description: "Proceed with {available_count} available / {total_added} total source(s)"}  // "Proceed without external sources" when total_added == 0
   ]
 )
 ```
 
 Where:
-- `{total_added}` = `len(WEB_ENTRIES) + len(FILE_ENTRIES)` — counts both available and unavailable entries
+- `{total_added}` = `len(WEB_ENTRIES) + len(FILE_ENTRIES)` (total count including unavailable)
+- `{available_count}` = count of entries with `status: "available"` across both arrays
 - `{cumulative_suffix}` = ` ({total_added} added)` when total_added > 0, empty string otherwise
 - `{cumulative_list}` = when total_added > 0, a numbered list of all collected sources followed by a blank line separator:
   ```
@@ -194,9 +195,8 @@ Where:
 3. Read content via `Read`
 4. Extract: filename, domain/topic, summary (1-2 lines), key topics (3-5 keywords)
 5. Cache the extracted summary for analyst prompt injection
-6. If read fails despite existence check (e.g., permission denied, binary file) → mark as `unavailable` with reason; show error inline: "⚠ Failed to read `{normalized_path}`: {reason}. Added as unavailable." Re-prompt with updated cumulative list showing the new `⚠ unavailable` entry.
-7. Add to `FILE_ENTRIES[]`
-8. Repeat loop
+6. **On success (steps 3-5 complete):** Add to `FILE_ENTRIES[]` with `status: "available"`. Notify user inline: "✓ Added: {filename}". Repeat loop.
+7. **On read failure** despite existence check (e.g., permission denied, binary file) → Add to `FILE_ENTRIES[]` with `status: "unavailable"`, `reason: "{failure_reason}"`. Show error inline: "⚠ Failed to read `{normalized_path}`: {reason}. Added as unavailable." Re-prompt with updated cumulative list showing the new `⚠ unavailable` entry. Repeat loop.
 
 ##### Error Handling and Re-prompting
 
