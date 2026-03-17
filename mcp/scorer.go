@@ -58,6 +58,9 @@ func handleScore(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToo
 	if contextID == "" || perspectiveID == "" {
 		return mcp.NewToolResultError("context_id and perspective_id are required"), nil
 	}
+	if !safeID.MatchString(contextID) || !safeID.MatchString(perspectiveID) {
+		return mcp.NewToolResultError("context_id and perspective_id must contain only alphanumeric characters, hyphens, and underscores"), nil
+	}
 
 	session, err := loadSession(contextID, perspectiveID)
 	if err != nil {

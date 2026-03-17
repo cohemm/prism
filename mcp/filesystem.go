@@ -58,21 +58,23 @@ func expandHome(p string) (string, error) {
 	return p, nil
 }
 
-func isAllowed(path string) error {
+// isAllowed resolves the path (including symlinks) and checks it is within allowed directories.
+// Returns the resolved absolute path for use in subsequent file operations (avoids TOCTOU).
+func isAllowed(path string) (string, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
-		return fmt.Errorf("invalid path: %w", err)
+		return "", fmt.Errorf("invalid path: %w", err)
 	}
 	abs, err = filepath.EvalSymlinks(abs)
 	if err != nil {
-		return fmt.Errorf("invalid path: %w", err)
+		return "", fmt.Errorf("invalid path: %w", err)
 	}
 	for _, dir := range allowedDirs {
 		if abs == dir || strings.HasPrefix(abs, dir+string(os.PathSeparator)) {
-			return nil
+			return abs, nil
 		}
 	}
-	return fmt.Errorf("access denied: %s is outside allowed directories", path)
+	return "", fmt.Errorf("access denied: %s is outside allowed directories", path)
 }
 
 func handleListRoots(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -89,11 +91,12 @@ func handleListDir(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToo
 		return mcp.NewToolResultError("path is required"), nil
 	}
 
-	if err := isAllowed(path); err != nil {
+	resolved, err := isAllowed(path)
+	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	entries, err := os.ReadDir(path)
+	entries, err := os.ReadDir(resolved)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to read directory: %v", err)), nil
 	}
@@ -116,11 +119,12 @@ func handleReadFile(_ context.Context, request mcp.CallToolRequest) (*mcp.CallTo
 		return mcp.NewToolResultError("path is required"), nil
 	}
 
-	if err := isAllowed(path); err != nil {
+	resolved, err := isAllowed(path)
+	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	info, err := os.Stat(path)
+	info, err := os.Stat(resolved)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to stat file: %v", err)), nil
 	}
@@ -129,7 +133,7 @@ func handleReadFile(_ context.Context, request mcp.CallToolRequest) (*mcp.CallTo
 		return mcp.NewToolResultError(fmt.Sprintf("file too large: %d bytes (max %d bytes) — use head/tail to read portions", info.Size(), maxFileSize)), nil
 	}
 
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(resolved)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to read file: %v", err)), nil
 	}
@@ -164,14 +168,15 @@ func handleSearchFiles(_ context.Context, request mcp.CallToolRequest) (*mcp.Cal
 		return mcp.NewToolResultError("path and pattern are required"), nil
 	}
 
-	if err := isAllowed(path); err != nil {
+	resolved, err := isAllowed(path)
+	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
 	var matches []string
 	maxResults := 100
 
-	err := filepath.WalkDir(path, func(p string, d os.DirEntry, err error) error {
+	err = filepath.WalkDir(resolved, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil // skip errors
 		}
