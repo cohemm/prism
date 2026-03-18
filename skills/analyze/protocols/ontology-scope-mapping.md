@@ -95,7 +95,7 @@ AskUserQuestion(
   multiSelect: true,
   options: [
     {label: "{server_name}", description: "{tool_count} tools — {capability_keywords}"},
-    ...one option per DISCOVERED_MCP_SERVERS[] entry (never expand individual tools as separate options),
+    ...one option per discovered server (never expand individual tools as separate options),
     {label: "Skip", description: "Proceed without MCP data sources"}
   ]
 )
@@ -103,7 +103,7 @@ AskUserQuestion(
 
 Where `{capability_keywords}` is a short phrase (≤10 words) summarizing the server's domain, inferred from its tool names (e.g., "database queries, schema inspection" or "log search, dashboard metrics").
 
-If user selects "Skip", gives empty answer, or selects no servers → proceed to Step 2b with empty `SELECTED_MCP_SERVERS[]`.
+If user selects "Skip", gives empty answer, or selects no servers → proceed to Step 2b with no MCP data sources.
 
 For each selected server, record: server name, full tool list (read-only filtered), description, capability summary.
 
@@ -123,6 +123,7 @@ Each iteration: `AskUserQuestion` with "Done" option and free-text "Other" for U
 AskUserQuestion(
   header: "External Sources",
   question: "{cumulative_list}Paste a URL or file path to add, or select Done.",
+  multiSelect: false,
   options: [{label: "Done", description: "Proceed with {count} source(s)"}]
 )
 ```
