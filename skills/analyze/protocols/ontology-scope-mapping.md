@@ -76,9 +76,9 @@ Discover available MCP servers that can provide queryable data. Execute these st
 
 ##### Discovery
 
-Call `ToolSearch(query="mcp", max_results=200)` to find MCP tools. Tool names follow `mcp__<server_name>__<tool_name>`.
+Call `ToolSearch(query="mcp", max_results=200)` to find MCP tools. From results, keep only tools matching the `mcp__<server_name>__<tool_name>` naming pattern — discard any non-matching results.
 
-From results, extract unique `<server_name>` values and **exclude**: `prism-mcp`, names containing `plugin_`, names starting with `__`. If the initial query returns few servers (e.g., <3), try targeted searches for known server patterns: `ToolSearch(query="mcp__ mysql")`, `ToolSearch(query="mcp__ notion")`, etc.
+Extract unique `<server_name>` values and **exclude**: `prism-mcp`, names containing `plugin_`, names starting with `__`. If the initial query returns few servers (e.g., <3), try targeted searches: `ToolSearch(query="mcp__ mysql")`, `ToolSearch(query="mcp__ notion")`, etc.
 
 For each discovered server, note: server name, tool count, key tools (up to 5), and a short capability description inferred from tool names.
 
