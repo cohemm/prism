@@ -89,7 +89,7 @@ Task(
 `{model}` and `{agent_type}` come from each perspective's fields in `perspectives.json` — same values used in Phase 1.
 
 MUST replace `{CONTEXT}` with a text summary derived from `context.json`: format as `Summary: {summary}\nKey Findings: {research_summary.key_findings joined}\nFiles Examined: {research_summary.files_examined joined}\nKey Areas: {research_summary.key_areas joined}`.
-MUST replace `{ONTOLOGY_SCOPE}` by reading `ontology-scope.json` and generating a text block per Phase B of ontology-scope-mapping.md (or "N/A" if not found).
+MUST replace `{ONTOLOGY_SCOPE}` by reading `ontology-scope.json` and generating a text block per Phase B of `protocols/ontology-scope-schema.md` (or "N/A" if not found).
 MUST replace `{SHORT_ID}` with the session's `{short-id}`. Verifiers use the same session path as their finding counterpart: `analyze-{short-id}/perspectives/{perspective-id}`.
 MUST replace `{perspective-id}` with the perspective's `id` field from `perspectives.json`. This value appears in the findings path, the `prism_interview` call, and throughout the verification protocol.
 MUST replace `{TOPIC_SUMMARY}` with a short description of the topic, derived from `context.json`'s `summary` field.

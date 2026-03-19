@@ -1,7 +1,7 @@
 ---
 name: analyze
 description: Runs multi-perspective agent team analysis with ontology-scoped investigation and MCP-based Socratic verification. General-purpose analysis engine — any topic can be seeded for multi-perspective analysis against ontology documents. Supports config-based customization for wrapper skills (e.g., PRD analysis).
-version: 5.0.3
+version: 5.0.4
 user-invocable: true
 allowed-tools: Task, SendMessage, TeamCreate, TeamDelete, TaskCreate, TaskUpdate, TaskList, TaskGet, TaskOutput, Read, Glob, Grep, Bash, Write, WebFetch, WebSearch, ToolSearch, AskUserQuestion, ListMcpResourcesTool, mcp__prism-mcp__prism_docs_roots, mcp__prism-mcp__prism_docs_list, mcp__prism-mcp__prism_docs_read, mcp__prism-mcp__prism_docs_search, mcp__prism-mcp__prism_interview, mcp__prism-mcp__prism_da_review
 ---
@@ -376,7 +376,7 @@ Task(
 > Apply worker preamble with `{WORK_ACTION}` = `"Investigate from your assigned perspective. Answer ALL key questions with evidence and code references. Write findings to findings.json. Report findings via SendMessage to team-lead. Do NOT run self-verification — that happens in a separate session."`
 
 MUST replace `{CONTEXT}` with a text summary derived from `context.json`: format as `Summary: {summary}\nKey Findings: {research_summary.key_findings joined}\nFiles Examined: {research_summary.files_examined joined}\nKey Areas: {research_summary.key_areas joined}`.
-MUST replace `{ONTOLOGY_SCOPE}` by reading `ontology-scope.json` and generating a text block per Phase B of ontology-scope-mapping.md (or "N/A" if not found).
+MUST replace `{ONTOLOGY_SCOPE}` by reading `ontology-scope.json` and generating a text block per Phase B of `protocols/ontology-scope-schema.md` (or "N/A" if not found).
 MUST replace `{SHORT_ID}` with the session's `{short-id}`. Analysts construct their own session path: `analyze-{short-id}/perspectives/{perspective-id}`.
 MUST replace `{KEY_QUESTIONS}` from `perspectives.json` for the matching perspective's `key_questions` array, formatted as a numbered list.
 MUST replace `{perspective-id}` with the perspective's `id` field from `perspectives.json`. This value appears in findings paths and SendMessage output in finding-protocol.md.
