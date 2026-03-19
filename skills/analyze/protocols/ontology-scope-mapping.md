@@ -1,123 +1,61 @@
 # Ontology Scope Mapping
 
-**Execution context:** This module is executed by the orchestrator. The `{STATE_DIR}` parameter determines where output files are written.
+**Execution context:** Executed by the orchestrator. `{STATE_DIR}` determines where output files are written.
 
-## Table of Contents
-
-- [Parameters](#parameters)
-- [Phase A: Build Ontology Pool](#phase-a-build-ontology-pool)
-  - [Pool Source Rules](#pool-source-rules)
-  - [Step 1: Check Document Source Availability](#step-1-check-document-source-availability)
-  - [Step 2: Source Collection](#step-2-source-collection)
-    - [Step 2a: MCP Data Source Selection](#step-2a-mcp-data-source-selection)
-    - [Step 2b: External Source Addition](#step-2b-external-source-addition)
-  - [Step 3: Pool Configuration Confirmation](#step-3-pool-configuration-confirmation)
-  - [Step 4: Build and Write ontology-scope.json](#step-4-build-and-write-ontology-scopejson)
-- [Phase B: Generate Scoped References](#phase-b-generate-scoped-references)
-- [Exit Gate](#exit-gate)
-
----
+**Execution style:** Complete each step fully, then move to the next. Do ONE tool call at a time — do not plan ahead.
 
 ## Parameters
 
 | Placeholder | Description | Examples |
 |-------------|-------------|---------|
-| `{AVAILABILITY_MODE}` | Behavior when document source is not configured | `optional` (warn and proceed) / `required` (error and stop) |
-| `{CALLER_CONTEXT}` | Context label for screen prompt customization | `"analysis"` / `"PRD analysis"` / `"incident analysis"` |
-| `{STATE_DIR}` | Absolute path to the skill's state directory for file persistence | `.omc/state/plan-abc123/` |
+| `{AVAILABILITY_MODE}` | Behavior when document source is not configured | `optional` / `required` |
+| `{CALLER_CONTEXT}` | Context label for prompts | `"analysis"` / `"PRD analysis"` |
+| `{STATE_DIR}` | State directory path | `~/.prism/state/analyze-abc123/` |
 
 ---
 
-## Phase A: Build Ontology Pool
+## Step 1: Check Document Source Availability
 
-### Pool Source Rules
+First load the deferred tool: `ToolSearch(query="select:mcp__prism-mcp__prism_docs_roots")`. Then call `mcp__prism-mcp__prism_docs_roots`.
 
-#### Document Source
-- The `prism-mcp` server exposes documentation directories via `prism_docs_*` tools (configured in `~/.prism/ontology-docs.json`)
-- The lead calls `prism_docs_roots` to get `ONTOLOGY_DIRS[]`
-- Each directory is a separate pool entry; analysts search only within these paths using `prism_docs_list`, `prism_docs_read`, `prism_docs_search`
+| Result | optional | required |
+|--------|----------|----------|
+| 1+ paths | `ONTOLOGY_AVAILABLE=true`. Record as `ONTOLOGY_DIRS[]`. | `ONTOLOGY_AVAILABLE=true`. Record as `ONTOLOGY_DIRS[]`. |
+| 0 paths / error | `ONTOLOGY_AVAILABLE=false`. Warn, continue. | **STOP.** |
 
-#### MCP Data Source
-- Any registered MCP server (excluding `prism-mcp` and internal plugin tools) can be added as a queryable data source
-- Discovery via `ToolSearch(query="mcp", max_results=200)` — keyword search for MCP tools, then groups by server name
-- Selected servers provide their tools to analysts for querying live data (databases, monitoring, error tracking, etc.)
-- Tool access instructions are generated per server based on discovered tools
-- Analysts MUST call `ToolSearch(query="select:<tool_name>")` to load deferred MCP tools before calling them
+→ **NOW do Step 2a. Nothing else.**
 
-#### Web Source
-- ONLY user-provided URLs (collected in Step 2b) can enter the pool
-- Each URL is **validated for accessibility immediately** upon entry via `WebFetch` — the user gets instant feedback on whether the URL is reachable
-- Accessible URLs are fetched, summarized, and cached at entry time (not deferred to pool build)
-- Inaccessible URLs are rejected by default; the user may choose to add them as `unavailable` sources
+---
 
-#### File Source
-- ONLY user-provided file paths (collected in Step 2b) can enter the pool
-- Each file path is **validated for existence immediately** upon entry — non-existent paths are rejected with feedback and never added to the pool
-- Existing files are read and summarized at entry time
-- Files that exist but fail to read (e.g., permission denied, binary) are marked as `unavailable` in the catalog
+## Step 2a: MCP Data Source Selection
 
-### Step 1: Check Document Source Availability
+Call `ToolSearch(query="mcp", max_results=200)`. Keep only tools matching `mcp__<server>__<tool>` pattern. Extract unique server names, **exclude**: `prism-mcp`, names containing `plugin_`, names starting with `__`.
 
-First load the deferred tool: `ToolSearch(query="select:mcp__prism-mcp__prism_docs_roots")`. Then call `mcp__prism-mcp__prism_docs_roots` to get configured documentation directories.
+If no servers found → skip to Step 2b.
 
-| Result | {AVAILABILITY_MODE}=optional | {AVAILABILITY_MODE}=required |
-|--------|------------------------------|------------------------------|
-| Returns 1+ paths | `ONTOLOGY_AVAILABLE=true`. Record as `ONTOLOGY_DIRS[]`. Proceed to Step 2. | Record as `ONTOLOGY_DIRS[]`. Proceed to Step 2. |
-| Returns 0 paths or "No directories configured" | `ONTOLOGY_AVAILABLE=false`. Warn and proceed to Step 2. | Error: "No documentation directories configured in ~/.prism/ontology-docs.json." **STOP.** |
-| Error / tool not found | `ONTOLOGY_AVAILABLE=false`. Warn and proceed to Step 2. | Error and **STOP.** |
-
-### Step 2: Source Collection
-
-Steps 2a and 2b form a single cohesive source-collection phase. The user flows from MCP server selection directly into external source addition without an intermediate confirmation — the combined result is reviewed once in Step 3.
-
-#### Step 2a: MCP Data Source Selection
-
-Discover available MCP servers that can provide queryable data. Execute these steps sequentially — do ONE tool call, process results, then proceed to the next action.
-
-##### Discovery
-
-Call `ToolSearch(query="mcp", max_results=200)` to find MCP tools. From results, keep only tools matching the `mcp__<server_name>__<tool_name>` naming pattern — discard any non-matching results.
-
-Extract unique `<server_name>` values and **exclude**: `prism-mcp`, names containing `plugin_`, names starting with `__`. If the initial query returns few servers (e.g., <3), try targeted searches: `ToolSearch(query="mcp__ mysql")`, `ToolSearch(query="mcp__ notion")`, etc.
-
-For each discovered server, note: server name, tool count, key tools (up to 5), and a short capability description inferred from tool names.
-
-If no results or no user MCP servers remain after filtering → skip to Step 2b.
-
-##### Selection
-
-Present discovered servers via `AskUserQuestion` with `multiSelect` — each option represents a **server** (not an individual tool). The user selects which data source servers analysts can access:
+Present servers via `AskUserQuestion`:
 
 ```
 AskUserQuestion(
-  header: "Live Data Sources ({N} servers discovered)",
-  question: "Select live data sources for {CALLER_CONTEXT}. (multiple selection)\nEach item is an MCP server — selecting it grants analysts access to all its read-only tools.",
+  header: "Live Data Sources",
+  question: "Select live data sources for {CALLER_CONTEXT}. (multiple selection)\nEach item is an MCP server.",
   multiSelect: true,
   options: [
     {label: "{server_name}", description: "{tool_count} tools — {capability_keywords}"},
-    ...one option per discovered server (never expand individual tools as separate options),
     {label: "Skip", description: "Proceed without MCP data sources"}
   ]
 )
 ```
 
-Where `{capability_keywords}` is a short phrase (≤10 words) summarizing the server's domain, inferred from its tool names (e.g., "database queries, schema inspection" or "log search, dashboard metrics").
+For selected servers: record server name, read-only tool list (filter out create/update/delete/patch/post tools), capability summary.
 
-If user selects "Skip", gives empty answer, or selects no servers → proceed to Step 2b with no MCP data sources.
+→ **NOW do Step 2b. Nothing else.**
 
-For each selected server, record: server name, full tool list (read-only filtered), description, capability summary.
+---
 
-**Safety note:** When compiling tool lists, filter out obvious write/mutation tools (names containing `create`, `update`, `delete`, `patch`, `post`) from the analyst-facing list. For query-execution tools (`run_query`, `run_select_query`), keep them but note: "SELECT queries only."
+## Step 2b: External Source Addition
 
-→ **NEXT ACTION: Continue to Step 2b — external source addition (same phase, no intermediate confirmation).**
-
-#### Step 2b: External Source Addition
-
-A loop that collects URLs and file paths. Zero external sources is valid — user may select "Done" immediately.
-
-##### Loop
-
-Each iteration: `AskUserQuestion` with "Done" option and free-text "Other" for URL/file path input. Show cumulative list of already-added sources in the question text (numbered, with type tag and status).
+Loop collecting URLs/file paths. Zero sources is valid.
 
 ```
 AskUserQuestion(
@@ -128,35 +66,17 @@ AskUserQuestion(
 )
 ```
 
-##### Processing
+- **Done** → exit loop
+- **URL** (http/https): validate via `WebFetch`, add if accessible
+- **File path**: validate via `Read`, add if exists
 
-**Done** → exit loop. **Free-text input** → auto-detect type:
+→ **NOW do Step 3. Nothing else.**
 
-- **URL** (starts with `http://` or `https://`): Validate via `WebFetch(url="{input}", prompt="Return the page title and a 2-sentence summary.")`. On success → extract title/summary/keywords, add to `WEB_ENTRIES[]` as `available`. On failure → ask "Add anyway" or "Skip" via `AskUserQuestion`.
-- **File path**: Normalize (`~` expansion), validate via `Glob`, then `Read`. On success → extract summary/keywords, add to `FILE_ENTRIES[]` as `available`. On failure (not found, directory, permission denied) → show error, re-prompt.
+---
 
-On any validation error, show the error inline and re-prompt with the same cumulative list. The user always gets another chance.
+## Step 3: Pool Confirmation
 
-→ **NEXT ACTION: Proceed to Step 3 — confirm pool configuration.**
-
-### Step 3: Pool Configuration Confirmation
-
-Output the assembled catalog as text:
-
-```
-Ontology Pool Configuration:
-| # | Source | Type | Path/URL | Domain | Summary | Status |
-|---|--------|------|----------|--------|---------|--------|
-| 1..N | mcp | doc  | {ONTOLOGY_DIRS[i]} | {domain} | Documentation directory | available |
-| N+1  | mcp | query| mysql    | ...    | ...     | available |
-| 3 | web    | url  | ...      | ...    | ...     | available |
-| 4 | file   | file | ...      | ...    | ...     | available |
-Total N sources (MCP Docs: {0 or 1}, MCP Data: n, Web: n, File: n)
-```
-
-**Note:** A pool with only MCP sources (Doc + Data) and zero external sources (Web: 0, File: 0) is a valid configuration — do not warn or require the user to add external sources.
-
-Then confirm:
+Display assembled catalog as a table, then confirm:
 
 ```
 AskUserQuestion(
@@ -164,171 +84,34 @@ AskUserQuestion(
   question: "Proceed with this ontology pool configuration?",
   multiSelect: false,
   options: [
-    {label: "Confirm — proceed", description: "Start {CALLER_CONTEXT} with this configuration"},
-    {label: "Reselect data sources", description: "Go back to MCP data source selection (Step 2a)"},  // ONLY show if Step 2a was presented (MCP data sources were discovered)
-    {label: "Add sources", description: "Go back to external source addition (Step 2b)"},
+    {label: "Confirm", description: "Start {CALLER_CONTEXT}"},
+    {label: "Reselect data sources", description: "Back to Step 2a"},
+    {label: "Add sources", description: "Back to Step 2b"},
     {label: "Cancel", description: "Proceed without ontology pool"}
   ]
 )
 ```
 
-| Selection | Action |
-|-----------|--------|
-| Confirm — proceed | Proceed to Step 4 |
-| Reselect data sources | Return to Step 2a (MCP selection). **Only show this option if Step 2a was presented (MCP data sources were discovered).** |
-| Add sources | Return to Step 2b (external source addition) |
-| Cancel + `{AVAILABILITY_MODE}`=`required` | Warn: "Ontology pool is required. Add at least one source." Return to Step 2b to add external sources. Maximum 2 cancel-retry cycles — after 2nd cancel without adding any source, error: "Cannot proceed without at least one ontology source in required mode." **STOP.** |
-| Cancel + `{AVAILABILITY_MODE}`=`optional` | Warn: "Proceeding without ontology pool." Pool Catalog is empty. Proceed |
+- **Confirm** → proceed to Step 4
+- **Reselect** → return to Step 2a (only if MCP servers were discovered)
+- **Add sources** → return to Step 2b
+- **Cancel + required** → warn, return to Step 2b (max 2 retries, then STOP)
+- **Cancel + optional** → proceed without pool
 
-→ **NEXT ACTION: Proceed to Step 4 — build the final catalog.**
-
-### Step 4: Build and Write `ontology-scope.json`
-
-Combine all sources into a single JSON file that contains both catalog metadata and access instructions.
-
-If no sources after all steps:
-- `{AVAILABILITY_MODE}`=`optional` → Warn and proceed. Analysts get `{ONTOLOGY_SCOPE}` = "N/A — no ontology sources available". Skip to Exit Gate.
-- `{AVAILABILITY_MODE}`=`required` → Error: "No ontology sources available." **STOP.**
-
-Write to `{STATE_DIR}/ontology-scope.json`:
-
-```json
-{
-  "sources": [
-    {
-      "id": 1,
-      "type": "doc",
-      "path": "/path/to/docs",
-      "domain": "inferred domain",
-      "summary": "Documentation directory",
-      "key_topics": ["topic1", "topic2"],
-      "status": "available",
-      "access": {
-        "tools": ["prism_docs_list", "prism_docs_read", "prism_docs_search"],
-        "instructions": "Use prism_docs_* tools. Pass directory path as argument."
-      }
-    },
-    {
-      "id": 2,
-      "type": "mcp_query",
-      "server_name": "grafana",
-      "domain": "monitoring",
-      "summary": "Grafana monitoring dashboards and metrics",
-      "key_topics": ["prometheus", "loki", "dashboards"],
-      "status": "available",
-      "access": {
-        "tools": ["mcp__grafana__query_prometheus", "mcp__grafana__query_loki_logs"],
-        "instructions": "Call ToolSearch(query=\"select:mcp__{server_name}__{tool_name}\") to load each tool before use, then call directly.",
-        "capabilities": "Query Prometheus metrics, Loki logs, dashboards",
-        "getting_started": "Start with list_datasources to discover available data",
-        "error_handling": "If a tool call fails, note the error and continue. Do NOT retry more than once.",
-        "safety": "SELECT/read-only queries only"
-      }
-    },
-    {
-      "id": 3,
-      "type": "web",
-      "url": "https://example.com/docs",
-      "domain": "API documentation",
-      "summary": "1-2 line summary",
-      "key_topics": ["keyword1", "keyword2", "keyword3"],
-      "status": "available",
-      "access": {
-        "instructions": "Content summary provided. Use WebFetch for deeper exploration.",
-        "cached_summary": "Fetched content summary from pool build time"
-      }
-    },
-    {
-      "id": 4,
-      "type": "file",
-      "path": "/path/to/file",
-      "domain": "domain",
-      "summary": "1-2 line summary",
-      "key_topics": ["keyword1", "keyword2"],
-      "status": "available",
-      "access": {
-        "instructions": "Content summary provided. Original file at path.",
-        "cached_summary": "Read content summary from pool build time"
-      }
-    },
-    {
-      "id": 5,
-      "type": "web",
-      "url": "https://failed.example.com",
-      "status": "unavailable",
-      "reason": "fetch failed: 404"
-    }
-  ],
-  "totals": {
-    "doc": 1,
-    "mcp_query": 1,
-    "web": 1,
-    "file": 1,
-    "unavailable": 1
-  },
-  "citation_format": {
-    "doc": "source:section",
-    "web": "url:section",
-    "file": "file:path:section",
-    "mcp_query": "mcp-query:server:detail"
-  }
-}
-```
-
-### Field Rules
-
-- `sources[].id`: sequential integer, starts at 1
-- `sources[].type`: one of `doc`, `mcp_query`, `web`, `file`
-- `sources[].status`: `available` or `unavailable`
-- `sources[].key_topics`: 3-5 keywords (inferred or extracted at pool build time)
-- `sources[].access`: present only when `status == "available"` — contains type-specific access instructions
-- `sources[].reason`: present only when `status == "unavailable"`
-- `totals`: count per type. `unavailable` counts all failed sources regardless of type
+→ **NOW do Step 4. Read `protocols/ontology-scope-schema.md` for the JSON schema.**
 
 ---
 
-## Phase B: Generate `{ONTOLOGY_SCOPE}` Text Block
+## Step 4: Write `ontology-scope.json`
 
-The orchestrator reads `{STATE_DIR}/ontology-scope.json` and generates a text block for analyst prompt injection. Only `available` sources are included in the text block.
-
-### Text block format
-
-```
-Your reference documents and data sources:
-
-- doc: {summary} ({status})
-  Directories: {path}
-  Access: {access.instructions}
-    {access.tools — one per line}
-
-- mcp-query: {server_name}: {summary}
-  Tools (read-only): {access.tools}
-  Access: {access.instructions}
-  Capabilities: {access.capabilities}
-  Getting started: {access.getting_started}
-  Error handling: {access.error_handling}
-
-- web: {url}: {domain} — {summary}
-  Access: {access.instructions}
-  {access.cached_summary}
-
-- file: {path}: {domain} — {summary}
-  Access: {access.instructions}
-  {access.cached_summary}
-
-Explore these sources through your perspective's lens.
-Cite findings as: {citation_format values}.
-```
-
-The orchestrator constructs this text block from the JSON and injects it into the `{ONTOLOGY_SCOPE}` placeholder before spawning analysts.
-
-**Backward compatibility:** If `ontology-scope.json` does not exist at read time (e.g., older session, fast-track skip), the orchestrator injects: `{ONTOLOGY_SCOPE}` = "N/A — ontology scope file not found. Analyze using available evidence only."
+Read `protocols/ontology-scope-schema.md` (relative to SKILL.md) for the full JSON schema and field rules. Write the file to `{STATE_DIR}/ontology-scope.json`.
 
 ---
 
 ## Exit Gate
 
-**Empty pool skip:** If sources array is empty and `{AVAILABILITY_MODE}`=`optional`, file-write item below is N/A.
-
-- [ ] Phase A complete: document source checked, MCP data sources selected (or skipped), external sources collected (or skipped), pool confirmed
-- [ ] `{STATE_DIR}/ontology-scope.json` written with all source metadata and access instructions
+- [ ] Document source checked
+- [ ] MCP data sources selected or skipped
+- [ ] External sources collected or skipped
+- [ ] Pool confirmed
+- [ ] `{STATE_DIR}/ontology-scope.json` written (or skipped if empty pool + optional mode)
