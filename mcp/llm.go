@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 )
 
@@ -28,201 +27,73 @@ func filterEnv(keys ...string) []string {
 	return filtered
 }
 
-// queryLLM calls the claude CLI as a subprocess, leveraging Max Plan authentication.
+// ---------------------------------------------------------------------------
+// Legacy wrappers — delegate to QuerySync from claude_sdk.go
+// ---------------------------------------------------------------------------
+
+// queryLLM calls the claude CLI as a subprocess.
 func queryLLM(ctx context.Context, prompt string) (string, error) {
-	cmd := exec.CommandContext(ctx, "claude",
-		"--print",
-		"--model", "claude-sonnet-4-6",
-		"--max-turns", "1",
-		"--", prompt,
-	)
-	cmd.Env = filterEnv("CLAUDECODE")
-
-	output, err := cmd.Output()
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			return "", fmt.Errorf("claude CLI error: %s", string(exitErr.Stderr))
-		}
-		return "", fmt.Errorf("claude CLI exec error: %w", err)
-	}
-
-	return strings.TrimSpace(string(output)), nil
+	return QuerySync(ctx, prompt, ClaudeOptions{
+		MaxTurns: 1,
+	})
 }
 
 // queryLLMWithSystemPrompt calls the claude CLI with a separate system prompt.
-// This allows proper separation of the system instructions from the user message,
-// which is important for tools that wrap a specific agent prompt (e.g., devils-advocate.md).
-//
-// Note: system prompt (~8KB) and user prompt are passed as CLI arguments.
-// Safe within macOS ARG_MAX (256KB) and Linux (2MB) for current usage.
-// If seed-analysis.json grows beyond ~200KB, consider stdin-based approach.
 func queryLLMWithSystemPrompt(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
-	cmd := exec.CommandContext(ctx, "claude",
-		"--print",
-		"--model", "claude-sonnet-4-6",
-		"--max-turns", "1",
-		"--system-prompt", systemPrompt,
-		"--", userPrompt,
-	)
-	cmd.Env = filterEnv("CLAUDECODE")
-
-	output, err := cmd.Output()
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			return "", fmt.Errorf("claude CLI error: %s", string(exitErr.Stderr))
-		}
-		return "", fmt.Errorf("claude CLI exec error: %w", err)
-	}
-
-	return strings.TrimSpace(string(output)), nil
+	return QuerySync(ctx, userPrompt, ClaudeOptions{
+		SystemPrompt: systemPrompt,
+		MaxTurns:     1,
+	})
 }
 
-// queryLLMScoped calls the claude CLI as a subprocess with task-scoped isolation.
-// Each subprocess gets its own working directory (the task's stateDir) to ensure
-// no resource contention between parallel analysis tasks. The model is explicitly
-// specified per-task rather than using a hardcoded default.
-//
-// This is the preferred function for pipeline stages where multiple tasks may
-// run concurrently. Each invocation is fully stateless—no shared file handles,
-// working directories, or environment state between subprocesses.
+// queryLLMScoped calls the claude CLI with task-scoped isolation.
 func queryLLMScoped(ctx context.Context, stateDir, model, prompt string) (string, error) {
-	if model == "" {
-		model = "claude-sonnet-4-6"
-	}
-	cmd := exec.CommandContext(ctx, "claude",
-		"--print",
-		"--model", model,
-		"--max-turns", "1",
-		"--", prompt,
-	)
-	cmd.Dir = stateDir
-	cmd.Env = filterEnv("CLAUDECODE")
-
-	output, err := cmd.Output()
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			return "", fmt.Errorf("claude CLI error (dir=%s): %s", stateDir, string(exitErr.Stderr))
-		}
-		return "", fmt.Errorf("claude CLI exec error (dir=%s): %w", stateDir, err)
-	}
-
-	return strings.TrimSpace(string(output)), nil
+	return QuerySync(ctx, prompt, ClaudeOptions{
+		Model:    model,
+		Cwd:      stateDir,
+		MaxTurns: 1,
+	})
 }
 
 // queryLLMScopedWithSystemPrompt calls the claude CLI with task-scoped isolation
-// and a separate system prompt. Combines the isolation of queryLLMScoped with
-// the system/user prompt separation of queryLLMWithSystemPrompt.
-//
-// Each subprocess runs in the task's stateDir with no shared state, making it
-// safe for concurrent execution across multiple analysis tasks and parallel
-// specialist/interview stages within a single task.
+// and a separate system prompt.
 func queryLLMScopedWithSystemPrompt(ctx context.Context, stateDir, model, systemPrompt, userPrompt string) (string, error) {
-	if model == "" {
-		model = "claude-sonnet-4-6"
-	}
-	cmd := exec.CommandContext(ctx, "claude",
-		"--print",
-		"--model", model,
-		"--max-turns", "1",
-		"--system-prompt", systemPrompt,
-		"--", userPrompt,
-	)
-	cmd.Dir = stateDir
-	cmd.Env = filterEnv("CLAUDECODE")
-
-	output, err := cmd.Output()
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			return "", fmt.Errorf("claude CLI error (dir=%s): %s", stateDir, string(exitErr.Stderr))
-		}
-		return "", fmt.Errorf("claude CLI exec error (dir=%s): %w", stateDir, err)
-	}
-
-	return strings.TrimSpace(string(output)), nil
+	return QuerySync(ctx, userPrompt, ClaudeOptions{
+		Model:        model,
+		SystemPrompt: systemPrompt,
+		Cwd:          stateDir,
+		MaxTurns:     1,
+	})
 }
 
-// queryLLMScopedWithSchema calls the claude CLI in --print mode with --json-schema
-// for structured output enforcement. Single-turn, no tool access.
-// Suitable for perspective generation where all input is provided inline.
-//
-// The --json-schema flag constrains the LLM response to conform to the given
-// JSON schema. The output is the raw structured JSON.
+// queryLLMScopedWithSchema calls the claude CLI with --json-schema for structured
+// output. Single-turn, no tool access.
 func queryLLMScopedWithSchema(ctx context.Context, stateDir, model, jsonSchema, prompt string) (string, error) {
-	if model == "" {
-		model = "claude-sonnet-4-6"
-	}
-	cmd := exec.CommandContext(ctx, "claude",
-		"--print",
-		"--model", model,
-		"--max-turns", "1",
-		"--json-schema", jsonSchema,
-		"--", prompt,
-	)
-	cmd.Dir = stateDir
-	cmd.Env = filterEnv("CLAUDECODE")
-
-	output, err := cmd.Output()
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			return "", fmt.Errorf("claude CLI error (dir=%s): %s", stateDir, string(exitErr.Stderr))
-		}
-		return "", fmt.Errorf("claude CLI exec error (dir=%s): %w", stateDir, err)
-	}
-
-	return strings.TrimSpace(string(output)), nil
+	return QuerySync(ctx, prompt, ClaudeOptions{
+		Model:      model,
+		JSONSchema: jsonSchema,
+		Cwd:        stateDir,
+		MaxTurns:   1,
+	})
 }
 
 // queryLLMScopedWithToolsAndSchema calls the claude CLI with tool access and
-// --json-schema for structured output. Multi-turn mode allows the agent to use
-// tools (Grep, Read, Glob, Bash) for active research. The --print flag captures
-// the final structured output to stdout.
-//
-// Parameters:
-//   - stateDir: working directory for task isolation
-//   - model: LLM model identifier
-//   - jsonSchema: JSON schema string for structured output enforcement
-//   - systemPrompt: system-level instructions (empty string to omit)
-//   - userPrompt: user message / task description
-//   - maxTurns: maximum agentic turns (tool use iterations)
-func queryLLMScopedWithToolsAndSchema(ctx context.Context, stateDir, model, jsonSchema, systemPrompt, userPrompt string, maxTurns int) (string, error) {
-	if model == "" {
-		model = "claude-sonnet-4-6"
-	}
-	if maxTurns <= 0 {
-		maxTurns = 10
-	}
-
-	args := []string{
-		"--print",
-		"--model", model,
-		"--permission-mode", "bypassPermissions",
-		"--max-turns", fmt.Sprintf("%d", maxTurns),
-		"--json-schema", jsonSchema,
-	}
-	if systemPrompt != "" {
-		args = append(args, "--system-prompt", systemPrompt)
-	}
-	args = append(args, "--", userPrompt)
-
-	cmd := exec.CommandContext(ctx, "claude", args...)
-	cmd.Dir = stateDir
-	cmd.Env = filterEnv("CLAUDECODE")
-
-	output, err := cmd.Output()
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			return "", fmt.Errorf("claude CLI error (dir=%s): %s", stateDir, string(exitErr.Stderr))
-		}
-		return "", fmt.Errorf("claude CLI exec error (dir=%s): %w", stateDir, err)
-	}
-
-	return strings.TrimSpace(string(output)), nil
+// --json-schema for structured output. Multi-turn mode — timeout controls duration.
+func queryLLMScopedWithToolsAndSchema(ctx context.Context, stateDir, model, jsonSchema, systemPrompt, userPrompt string, _ int) (string, error) {
+	return QuerySync(ctx, userPrompt, ClaudeOptions{
+		Model:          model,
+		SystemPrompt:   systemPrompt,
+		JSONSchema:     jsonSchema,
+		PermissionMode: "bypassPermissions",
+		Cwd:            stateDir,
+		// No MaxTurns — context timeout is the safety net
+	})
 }
 
 // extractJSON extracts a valid JSON object from output that may contain
 // surrounding text (markdown fences, explanatory text, etc.).
-// With --json-schema, output should be clean JSON, but this provides robustness
-// for edge cases where the CLI wraps the output.
+// With --json-schema + stream-json, structured_output should be clean JSON,
+// but this provides robustness for edge cases.
 func extractJSON(s string) (string, error) {
 	s = strings.TrimSpace(s)
 
