@@ -195,6 +195,7 @@ func queryLLMScopedWithToolsAndSchema(ctx context.Context, stateDir, model, json
 	args := []string{
 		"--print",
 		"--model", model,
+		"--permission-mode", "bypassPermissions",
 		"--max-turns", fmt.Sprintf("%d", maxTurns),
 		"--json-schema", jsonSchema,
 	}
