@@ -242,10 +242,25 @@ func extractJSON(s string) (string, error) {
 		}
 	}
 
-	// Find first '{' and its matching '}' with proper nesting
-	start := strings.Index(s, "{")
+	// Find first '{' or '[' and its matching closer with proper nesting
+	objStart := strings.Index(s, "{")
+	arrStart := strings.Index(s, "[")
+
+	// Pick whichever comes first
+	start := objStart
+	if start < 0 || (arrStart >= 0 && arrStart < start) {
+		start = arrStart
+	}
 	if start < 0 {
-		return "", fmt.Errorf("no JSON object found in output (len=%d)", len(s))
+		return "", fmt.Errorf("no JSON object or array found in output (len=%d)", len(s))
+	}
+
+	openCh := s[start]
+	var closeCh byte
+	if openCh == '{' {
+		closeCh = '}'
+	} else {
+		closeCh = ']'
 	}
 
 	depth := 0
@@ -269,9 +284,9 @@ func extractJSON(s string) (string, error) {
 			continue
 		}
 		switch ch {
-		case '{':
+		case openCh:
 			depth++
-		case '}':
+		case closeCh:
 			depth--
 			if depth == 0 {
 				candidate := s[start : i+1]
@@ -282,5 +297,5 @@ func extractJSON(s string) (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("no valid JSON object found in output (len=%d, first 200 chars: %.200s)", len(s), s)
+	return "", fmt.Errorf("no valid JSON found in output (len=%d, first 200 chars: %.200s)", len(s), s)
 }

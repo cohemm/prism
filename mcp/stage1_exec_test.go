@@ -114,6 +114,53 @@ func TestExtractJSON_InvalidJSON(t *testing.T) {
 	}
 }
 
+func TestExtractJSON_Array(t *testing.T) {
+	input := `[{"id": 1}, {"id": 2}]`
+	got, err := extractJSON(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != input {
+		t.Errorf("expected %q, got %q", input, got)
+	}
+}
+
+func TestExtractJSON_ArrayWrappedInText(t *testing.T) {
+	input := "Here are the results:\n[{\"id\": 1}, {\"id\": 2}]\nDone."
+	expected := `[{"id": 1}, {"id": 2}]`
+	got, err := extractJSON(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != expected {
+		t.Errorf("expected %q, got %q", expected, got)
+	}
+}
+
+func TestExtractJSON_ArrayInMarkdownFences(t *testing.T) {
+	input := "```json\n[{\"key\": \"value\"}]\n```"
+	expected := `[{"key": "value"}]`
+	got, err := extractJSON(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != expected {
+		t.Errorf("expected %q, got %q", expected, got)
+	}
+}
+
+func TestExtractJSON_ObjectBeforeArray(t *testing.T) {
+	// When '{' comes before '[', should extract the object
+	input := `{"key": "value"}`
+	got, err := extractJSON(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != input {
+		t.Errorf("expected %q, got %q", input, got)
+	}
+}
+
 // --- Tests for runSeedAnalysis integration ---
 
 func TestRunSeedAnalysis_WritesOutputFile(t *testing.T) {

@@ -141,6 +141,15 @@ func runDAReviewLoop(task *AnalysisTask, cfg AnalysisConfig) error {
 		criticalCount, majorCount := countSeverities(actionable)
 		pass := shouldPassDA(criticalCount, majorCount)
 
+		// Detect parse failure: no findings extracted but severity keywords present
+		// in raw output. The DA likely produced non-standard markdown. Treat as
+		// not-passed to avoid false positive pass on parse failure.
+		if pass && len(findings) == 0 && severityKeywordRe.MatchString(rawOutput) {
+			pass = false
+			log.Printf("[%s] DA round %d: parse warning — no findings parsed but CRITICAL/MAJOR keywords detected in raw output; treating as not-passed",
+				task.ID, round)
+		}
+
 		log.Printf("[%s] DA round %d: pass=%v critical=%d major=%d total_actionable=%d",
 			task.ID, round, pass, criticalCount, majorCount, len(actionable))
 

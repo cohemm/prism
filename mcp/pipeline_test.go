@@ -25,7 +25,7 @@ func createTestTask(t *testing.T, topic, model string) (*AnalysisTask, string) {
 	}
 
 	store := NewTaskStore()
-	task := store.Create("", model, stateDir, reportDir)
+	task := store.Create("", model, stateDir, reportDir, "")
 	task.UpdateDirs(task.ID, stateDir, reportDir)
 
 	// Write config.json
@@ -100,7 +100,7 @@ func TestPipelineFailsOnMissingConfig(t *testing.T) {
 	os.MkdirAll(stateDir, 0755)
 
 	store := NewTaskStore()
-	task := store.Create("", "model", stateDir, "/tmp/reports")
+	task := store.Create("", "model", stateDir, "/tmp/reports", "")
 	task.UpdateDirs(task.ID, stateDir, "/tmp/reports")
 	// No config.json written
 
@@ -148,7 +148,7 @@ func TestPipelineStartsWithRunningStatus(t *testing.T) {
 // --- Tests for UpdateStageDetail ---
 
 func TestUpdateStageDetail(t *testing.T) {
-	task := newAnalysisTask("ctx-1", "model", "/state", "/reports")
+	task := newAnalysisTask("ctx-1", "model", "/state", "/reports", "")
 	task.StartStage(StageScope, "initial detail")
 
 	snap := task.Snapshot()
@@ -172,7 +172,7 @@ func TestUpdateStageDetail(t *testing.T) {
 }
 
 func TestUpdateStageDetailConcurrency(t *testing.T) {
-	task := newAnalysisTask("ctx-conc", "model", "/state", "/reports")
+	task := newAnalysisTask("ctx-conc", "model", "/state", "/reports", "")
 	task.StartStage(StageScope, "initial")
 
 	var wg sync.WaitGroup
@@ -220,7 +220,7 @@ func TestStageResultFailure(t *testing.T) {
 // --- Tests for specialist stage parallel progress tracking ---
 
 func TestSpecialistStageProgressTracking(t *testing.T) {
-	task := newAnalysisTask("ctx-spec", "model", "/state", "/reports")
+	task := newAnalysisTask("ctx-spec", "model", "/state", "/reports", "")
 	task.SetStatus(TaskStatusRunning)
 
 	// Simulate what runAnalysisPipeline does for the specialist stage
@@ -264,7 +264,7 @@ func TestSpecialistStageProgressTracking(t *testing.T) {
 // --- Tests for interview stage progress tracking ---
 
 func TestInterviewStageProgressTracking(t *testing.T) {
-	task := newAnalysisTask("ctx-int", "model", "/state", "/reports")
+	task := newAnalysisTask("ctx-int", "model", "/state", "/reports", "")
 	task.SetStatus(TaskStatusRunning)
 	task.CompleteStage(StageScope, "done")
 	task.CompleteStage(StageSpecialist, "3/3 succeeded")
@@ -298,7 +298,7 @@ func TestInterviewStageProgressTracking(t *testing.T) {
 // --- Test full stage transition sequence ---
 
 func TestFullStageTransitionSequence(t *testing.T) {
-	task := newAnalysisTask("ctx-full", "model", "/state", "/reports")
+	task := newAnalysisTask("ctx-full", "model", "/state", "/reports", "")
 
 	// Initial state: all stages pending
 	snap := task.Snapshot()
@@ -373,7 +373,7 @@ func TestFullStageTransitionSequence(t *testing.T) {
 // --- Test stage failure leaves subsequent stages pending ---
 
 func TestStageFailureLeavesSubsequentPending(t *testing.T) {
-	task := newAnalysisTask("ctx-early-fail", "model", "/state", "/reports")
+	task := newAnalysisTask("ctx-early-fail", "model", "/state", "/reports", "")
 	task.SetStatus(TaskStatusRunning)
 
 	// Scope completes
@@ -411,7 +411,7 @@ func TestStageFailureLeavesSubsequentPending(t *testing.T) {
 // --- Test UpdatedAt advances with each state change ---
 
 func TestUpdatedAtAdvances(t *testing.T) {
-	task := newAnalysisTask("ctx-time", "model", "/state", "/reports")
+	task := newAnalysisTask("ctx-time", "model", "/state", "/reports", "")
 	t0 := task.UpdatedAt
 
 	time.Sleep(time.Millisecond)

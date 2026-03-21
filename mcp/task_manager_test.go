@@ -8,7 +8,7 @@ import (
 )
 
 func TestGenerateTaskID(t *testing.T) {
-	id := generateTaskID()
+	id := generateTaskID("")
 	if !strings.HasPrefix(id, "analyze-") {
 		t.Errorf("expected prefix 'analyze-', got %q", id)
 	}
@@ -20,11 +20,28 @@ func TestGenerateTaskID(t *testing.T) {
 	// Uniqueness
 	seen := make(map[string]bool)
 	for i := 0; i < 1000; i++ {
-		id := generateTaskID()
+		id := generateTaskID("")
 		if seen[id] {
 			t.Fatalf("duplicate ID generated: %s", id)
 		}
 		seen[id] = true
+	}
+}
+
+func TestGenerateTaskIDWithSessionID(t *testing.T) {
+	// When session_id is provided, task_id should be "analyze-{session_id}"
+	id := generateTaskID("my-session-123")
+	if id != "analyze-my-session-123" {
+		t.Errorf("expected 'analyze-my-session-123', got %q", id)
+	}
+
+	// Empty session_id should generate random ID
+	id = generateTaskID("")
+	if !strings.HasPrefix(id, "analyze-") {
+		t.Errorf("expected prefix 'analyze-', got %q", id)
+	}
+	if id == "analyze-" {
+		t.Error("empty session_id should not produce 'analyze-' with no suffix")
 	}
 }
 
@@ -64,7 +81,7 @@ func TestStageStatusIsTerminal(t *testing.T) {
 }
 
 func TestNewAnalysisTask(t *testing.T) {
-	task := newAnalysisTask("ctx-123", "claude-sonnet-4-6", "/tmp/state", "/tmp/reports")
+	task := newAnalysisTask("ctx-123", "claude-sonnet-4-6", "/tmp/state", "/tmp/reports", "")
 
 	if task.Status != TaskStatusQueued {
 		t.Errorf("expected status queued, got %s", task.Status)
@@ -91,7 +108,7 @@ func TestNewAnalysisTask(t *testing.T) {
 }
 
 func TestTaskLifecycle(t *testing.T) {
-	task := newAnalysisTask("ctx-1", "model", "/state", "/reports")
+	task := newAnalysisTask("ctx-1", "model", "/state", "/reports", "")
 
 	// Start task
 	task.SetStatus(TaskStatusRunning)
@@ -138,7 +155,7 @@ func TestTaskLifecycle(t *testing.T) {
 }
 
 func TestTaskSetError(t *testing.T) {
-	task := newAnalysisTask("ctx-err", "model", "/state", "/reports")
+	task := newAnalysisTask("ctx-err", "model", "/state", "/reports", "")
 	task.SetStatus(TaskStatusRunning)
 	task.SetError("something went wrong")
 
@@ -153,7 +170,7 @@ func TestTaskSetError(t *testing.T) {
 func TestTaskStoreCreateAndGet(t *testing.T) {
 	store := NewTaskStore()
 
-	task := store.Create("ctx-1", "model", "/state", "/reports")
+	task := store.Create("ctx-1", "model", "/state", "/reports", "")
 	if task == nil {
 		t.Fatal("expected non-nil task")
 	}
@@ -174,7 +191,7 @@ func TestTaskStoreCreateAndGet(t *testing.T) {
 
 func TestTaskStoreSnapshot(t *testing.T) {
 	store := NewTaskStore()
-	task := store.Create("ctx-snap", "model", "/state", "/reports")
+	task := store.Create("ctx-snap", "model", "/state", "/reports", "")
 
 	snap, ok := store.Snapshot(task.ID)
 	if !ok {
@@ -193,9 +210,9 @@ func TestTaskStoreSnapshot(t *testing.T) {
 func TestTaskStoreList(t *testing.T) {
 	store := NewTaskStore()
 
-	store.Create("ctx-1", "model", "/state", "/reports")
-	store.Create("ctx-2", "model", "/state", "/reports")
-	store.Create("ctx-3", "model", "/state", "/reports")
+	store.Create("ctx-1", "model", "/state", "/reports", "")
+	store.Create("ctx-2", "model", "/state", "/reports", "")
+	store.Create("ctx-3", "model", "/state", "/reports", "")
 
 	list := store.List()
 	if len(list) != 3 {
@@ -212,7 +229,7 @@ func TestTaskStoreConcurrency(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			store.Create("ctx-concurrent", "model", "/state", "/reports")
+			store.Create("ctx-concurrent", "model", "/state", "/reports", "")
 		}()
 	}
 	wg.Wait()
@@ -240,8 +257,8 @@ func TestTaskStoreConcurrency(t *testing.T) {
 
 func TestCrossTaskIsolation(t *testing.T) {
 	store := NewTaskStore()
-	task1 := store.Create("ctx-iso-1", "model", "/state/1", "/reports/1")
-	task2 := store.Create("ctx-iso-2", "model", "/state/2", "/reports/2")
+	task1 := store.Create("ctx-iso-1", "model", "/state/1", "/reports/1", "")
+	task2 := store.Create("ctx-iso-2", "model", "/state/2", "/reports/2", "")
 
 	// Mutate task1 — task2 must be unaffected
 	task1.SetStatus(TaskStatusRunning)
@@ -268,7 +285,7 @@ func TestCrossTaskIsolation(t *testing.T) {
 }
 
 func TestSnapshotImmutability(t *testing.T) {
-	task := newAnalysisTask("ctx-immut", "model", "/state", "/reports")
+	task := newAnalysisTask("ctx-immut", "model", "/state", "/reports", "")
 	task.SetStatus(TaskStatusRunning)
 	task.StartStage(StageScope, "running scope")
 
@@ -304,7 +321,7 @@ func TestConcurrentCrossTaskOperations(t *testing.T) {
 	// Create tasks
 	tasks := make([]*AnalysisTask, numTasks)
 	for i := 0; i < numTasks; i++ {
-		tasks[i] = store.Create(fmt.Sprintf("ctx-%d", i), "model", "/state", "/reports")
+		tasks[i] = store.Create(fmt.Sprintf("ctx-%d", i), "model", "/state", "/reports", "")
 	}
 
 	var wg sync.WaitGroup
@@ -348,7 +365,7 @@ func TestConcurrentCrossTaskOperations(t *testing.T) {
 }
 
 func TestSnapshotStageOrdering(t *testing.T) {
-	task := newAnalysisTask("ctx-order", "model", "/state", "/reports")
+	task := newAnalysisTask("ctx-order", "model", "/state", "/reports", "")
 	snap := task.Snapshot()
 
 	expected := AllStages()

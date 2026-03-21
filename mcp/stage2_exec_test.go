@@ -394,8 +394,8 @@ func TestCollectSpecialistResultsWithPartialFailure(t *testing.T) {
 	if collected.Failed != 1 {
 		t.Errorf("Failed = %d, want 1", collected.Failed)
 	}
-	if !collected.Degraded {
-		t.Error("expected Degraded = true")
+	if !collected.PartialFailure {
+		t.Error("expected PartialFailure = true")
 	}
 	if collected.TotalFindings != 2 {
 		t.Errorf("TotalFindings = %d, want 2", collected.TotalFindings)

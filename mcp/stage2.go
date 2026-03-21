@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -305,9 +306,14 @@ func loadOntologyScopeText(stateDir string) string {
 	if len(scope.CitationFormat) > 0 {
 		sb.WriteString("Explore these sources through your perspective's lens.\n")
 		sb.WriteString("Cite findings as: ")
+		keys := make([]string, 0, len(scope.CitationFormat))
+		for k := range scope.CitationFormat {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
 		formats := make([]string, 0, len(scope.CitationFormat))
-		for _, v := range scope.CitationFormat {
-			formats = append(formats, v)
+		for _, k := range keys {
+			formats = append(formats, scope.CitationFormat[k])
 		}
 		sb.WriteString(strings.Join(formats, ", "))
 		sb.WriteString(".\n")
@@ -483,11 +489,12 @@ func BuildAllSpecialistCommands(cfg AnalysisConfig, perspectives []Perspective) 
 	return commands, nil
 }
 
-// truncateForPrompt truncates a string to maxLen characters for prompt inclusion,
-// appending "..." if truncated. Used for topic descriptions in protocol templates.
+// truncateForPrompt truncates a string to maxLen runes for prompt inclusion,
+// appending "..." if truncated. Uses []rune conversion for UTF-8 safe truncation.
 func truncateForPrompt(s string, maxLen int) string {
-	if len(s) <= maxLen {
+	runes := []rune(s)
+	if len(runes) <= maxLen {
 		return s
 	}
-	return s[:maxLen-3] + "..."
+	return string(runes[:maxLen-3]) + "..."
 }

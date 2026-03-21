@@ -524,6 +524,8 @@ func TestTruncateForPrompt(t *testing.T) {
 		{"exactly10!", 10, "exactly10!"},
 		{"this is a longer string", 10, "this is..."},
 		{"", 10, ""},
+		{"한국어 테스트 문자열입니다", 8, "한국어 테..."},
+		{"🎉🎊🎈🎁🎂🎃🎄🎅🎆🎇", 7, "🎉🎊🎈🎁..."},
 	}
 
 	for _, tt := range tests {

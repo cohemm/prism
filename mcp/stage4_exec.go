@@ -195,7 +195,7 @@ func buildSynthesisSystemPrompt(sctx SynthesisContext) string {
 		}
 
 		// Degradation notice for failed specialists
-		if sctx.CollectedFindings.Degraded {
+		if sctx.CollectedFindings.PartialFailure {
 			sb.WriteString(sctx.CollectedFindings.DegradationNotice())
 			sb.WriteString("\n")
 		}
@@ -245,7 +245,7 @@ func buildSynthesisSystemPrompt(sctx SynthesisContext) string {
 		}
 
 		// Degradation notice for failed interviews
-		if sctx.CollectedVerifications.Degraded {
+		if sctx.CollectedVerifications.PartialFailure {
 			sb.WriteString(sctx.CollectedVerifications.InterviewDegradationNotice())
 			sb.WriteString("\n")
 		}

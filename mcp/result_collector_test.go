@@ -61,8 +61,8 @@ func TestCollectSpecialistResults_AllSuccess(t *testing.T) {
 	if collected.TotalFindings != 6 {
 		t.Errorf("TotalFindings = %d, want 6", collected.TotalFindings)
 	}
-	if collected.Degraded {
-		t.Error("Degraded should be false when all succeed")
+	if collected.PartialFailure {
+		t.Error("PartialFailure should be false when all succeed")
 	}
 	if len(collected.AllFindings) != 6 {
 		t.Errorf("AllFindings length = %d, want 6", len(collected.AllFindings))
@@ -124,8 +124,8 @@ func TestCollectSpecialistResults_PartialFailure(t *testing.T) {
 	if collected.Failed != 2 {
 		t.Errorf("Failed = %d, want 2", collected.Failed)
 	}
-	if !collected.Degraded {
-		t.Error("Degraded should be true with partial failure")
+	if !collected.PartialFailure {
+		t.Error("PartialFailure should be true with partial failure")
 	}
 	if collected.TotalFindings != 1 {
 		t.Errorf("TotalFindings = %d, want 1", collected.TotalFindings)
@@ -180,9 +180,9 @@ func TestCollectSpecialistResults_AllFailed(t *testing.T) {
 	if collected.Failed != 2 {
 		t.Errorf("Failed = %d, want 2", collected.Failed)
 	}
-	// Degraded is false when ALL fail (nothing to degrade to)
-	if collected.Degraded {
-		t.Error("Degraded should be false when all fail (no partial results)")
+	// PartialFailure is false when ALL fail (nothing to degrade to)
+	if collected.PartialFailure {
+		t.Error("PartialFailure should be false when all fail (no partial results)")
 	}
 	if len(collected.AllFindings) != 0 {
 		t.Errorf("AllFindings should be empty, got %d", len(collected.AllFindings))
@@ -267,7 +267,7 @@ func TestWriteReadCollectedFindings(t *testing.T) {
 		Succeeded:        1,
 		Failed:           1,
 		TotalFindings:    3,
-		Degraded:         true,
+		PartialFailure:         true,
 		Results: []SpecialistResult{
 			{
 				PerspectiveID: "p1",
@@ -328,8 +328,8 @@ func TestWriteReadCollectedFindings(t *testing.T) {
 	if readCF.TotalFindings != cf.TotalFindings {
 		t.Errorf("TotalFindings = %d, want %d", readCF.TotalFindings, cf.TotalFindings)
 	}
-	if readCF.Degraded != cf.Degraded {
-		t.Errorf("Degraded = %v, want %v", readCF.Degraded, cf.Degraded)
+	if readCF.PartialFailure != cf.PartialFailure {
+		t.Errorf("PartialFailure = %v, want %v", readCF.PartialFailure, cf.PartialFailure)
 	}
 	if len(readCF.AllFindings) != len(cf.AllFindings) {
 		t.Errorf("AllFindings length = %d, want %d", len(readCF.AllFindings), len(cf.AllFindings))
@@ -341,17 +341,17 @@ func TestWriteReadCollectedFindings(t *testing.T) {
 
 func TestDegradationNotice(t *testing.T) {
 	// No degradation
-	cf := CollectedFindings{Degraded: false, Failed: 0}
+	cf := CollectedFindings{PartialFailure: false, Failed: 0}
 	if notice := cf.DegradationNotice(); notice != "" {
 		t.Error("DegradationNotice should be empty when not degraded")
 	}
 
-	// Degraded
+	// PartialFailure
 	cf = CollectedFindings{
 		TotalSpecialists: 3,
 		Succeeded:        1,
 		Failed:           2,
-		Degraded:         true,
+		PartialFailure:         true,
 		FailedSpecialists: []FailedSpecialist{
 			{PerspectiveID: "perf", Outcome: OutcomeTimeout, ErrorMessage: "timeout"},
 			{PerspectiveID: "sec", Outcome: OutcomeCrashed, ErrorMessage: "crash"},
@@ -529,8 +529,8 @@ func TestCollectInterviewResults_AllSuccess(t *testing.T) {
 	if collected.Failed != 0 {
 		t.Errorf("Failed = %d, want 0", collected.Failed)
 	}
-	if collected.Degraded {
-		t.Error("Degraded should be false when all succeed")
+	if collected.PartialFailure {
+		t.Error("PartialFailure should be false when all succeed")
 	}
 	if len(collected.VerifiedFindings) != 4 {
 		t.Errorf("VerifiedFindings length = %d, want 4", len(collected.VerifiedFindings))
@@ -608,8 +608,8 @@ func TestCollectInterviewResults_PartialFailure(t *testing.T) {
 	if collected.Failed != 2 {
 		t.Errorf("Failed = %d, want 2", collected.Failed)
 	}
-	if !collected.Degraded {
-		t.Error("Degraded should be true with partial failure")
+	if !collected.PartialFailure {
+		t.Error("PartialFailure should be true with partial failure")
 	}
 	if len(collected.FailedInterviews) != 2 {
 		t.Errorf("FailedInterviews length = %d, want 2", len(collected.FailedInterviews))
@@ -672,9 +672,9 @@ func TestCollectInterviewResults_AllFailed(t *testing.T) {
 	if collected.Failed != 2 {
 		t.Errorf("Failed = %d, want 2", collected.Failed)
 	}
-	// Degraded is false when ALL fail (nothing to degrade to)
-	if collected.Degraded {
-		t.Error("Degraded should be false when all fail (no partial results)")
+	// PartialFailure is false when ALL fail (nothing to degrade to)
+	if collected.PartialFailure {
+		t.Error("PartialFailure should be false when all fail (no partial results)")
 	}
 	if len(collected.VerifiedFindings) != 0 {
 		t.Errorf("VerifiedFindings should be empty, got %d", len(collected.VerifiedFindings))
@@ -792,7 +792,7 @@ func TestWriteReadCollectedVerifications(t *testing.T) {
 		TotalInterviews: 2,
 		Succeeded:       1,
 		Failed:          1,
-		Degraded:        true,
+		PartialFailure:        true,
 		AverageScore:    0.86,
 		Results: []InterviewResult{
 			{
@@ -854,8 +854,8 @@ func TestWriteReadCollectedVerifications(t *testing.T) {
 	if readCV.Failed != cv.Failed {
 		t.Errorf("Failed = %d, want %d", readCV.Failed, cv.Failed)
 	}
-	if readCV.Degraded != cv.Degraded {
-		t.Errorf("Degraded = %v, want %v", readCV.Degraded, cv.Degraded)
+	if readCV.PartialFailure != cv.PartialFailure {
+		t.Errorf("PartialFailure = %v, want %v", readCV.PartialFailure, cv.PartialFailure)
 	}
 	if readCV.AverageScore != cv.AverageScore {
 		t.Errorf("AverageScore = %f, want %f", readCV.AverageScore, cv.AverageScore)
@@ -870,17 +870,17 @@ func TestWriteReadCollectedVerifications(t *testing.T) {
 
 func TestInterviewDegradationNotice(t *testing.T) {
 	// No degradation
-	cv := CollectedVerifications{Degraded: false, Failed: 0}
+	cv := CollectedVerifications{PartialFailure: false, Failed: 0}
 	if notice := cv.InterviewDegradationNotice(); notice != "" {
 		t.Error("InterviewDegradationNotice should be empty when not degraded")
 	}
 
-	// Degraded
+	// PartialFailure
 	cv = CollectedVerifications{
 		TotalInterviews: 3,
 		Succeeded:       1,
 		Failed:          2,
-		Degraded:        true,
+		PartialFailure:        true,
 		FailedInterviews: []FailedInterview{
 			{PerspectiveID: "perf", Outcome: InterviewTimeout, ErrorMessage: "timeout"},
 			{PerspectiveID: "sec", Outcome: InterviewCrashed, ErrorMessage: "crash"},
@@ -1089,8 +1089,8 @@ func TestSkipLogic_SpecialistRetryExhausted(t *testing.T) {
 	if collected.Failed != 1 {
 		t.Errorf("Failed = %d, want 1", collected.Failed)
 	}
-	if !collected.Degraded {
-		t.Error("Degraded should be true")
+	if !collected.PartialFailure {
+		t.Error("PartialFailure should be true")
 	}
 
 	// Verify the failed specialist is classified as retry_exhausted
@@ -1210,8 +1210,8 @@ func TestSkipLogic_InterviewRetryExhausted(t *testing.T) {
 	if collected.Failed != 1 {
 		t.Errorf("Failed = %d, want 1", collected.Failed)
 	}
-	if !collected.Degraded {
-		t.Error("Degraded should be true")
+	if !collected.PartialFailure {
+		t.Error("PartialFailure should be true")
 	}
 
 	// Verify SkippedInterviews
@@ -1252,7 +1252,7 @@ func TestSkipLogic_DegradationNoticeContainsSkippedLabel(t *testing.T) {
 		TotalSpecialists: 3,
 		Succeeded:        1,
 		Failed:           2,
-		Degraded:         true,
+		PartialFailure:         true,
 		FailedSpecialists: []FailedSpecialist{
 			{PerspectiveID: "perf", Outcome: OutcomeRetryFailed, ErrorMessage: "retry failed"},
 			{PerspectiveID: "sec", Outcome: OutcomeTimeout, ErrorMessage: "timeout"},
@@ -1282,7 +1282,7 @@ func TestSkipLogic_InterviewDegradationNoticeContainsSkippedLabel(t *testing.T) 
 		TotalInterviews: 2,
 		Succeeded:       1,
 		Failed:          1,
-		Degraded:        true,
+		PartialFailure:        true,
 		FailedInterviews: []FailedInterview{
 			{PerspectiveID: "perf", Outcome: InterviewRetryFailed, ErrorMessage: "retry failed"},
 		},
@@ -1361,7 +1361,7 @@ func TestSkipLogic_JSONRoundTrip(t *testing.T) {
 		TotalSpecialists: 2,
 		Succeeded:        1,
 		Failed:           1,
-		Degraded:         true,
+		PartialFailure:         true,
 		Results: []SpecialistResult{
 			{PerspectiveID: "ok", Outcome: OutcomeSuccess, FindingsCount: 1},
 			{PerspectiveID: "fail", Outcome: OutcomeRetryFailed, Skipped: true, ErrorMessage: "retry exhausted"},
@@ -1468,7 +1468,7 @@ func TestMissingPerspectivesReport_FailedSpecialists(t *testing.T) {
 		TotalSpecialists: 3,
 		Succeeded:        1,
 		Failed:           2,
-		Degraded:         true,
+		PartialFailure:         true,
 		FailedSpecialists: []FailedSpecialist{
 			{PerspectiveID: "security", Outcome: OutcomeTimeout, ErrorMessage: "deadline exceeded"},
 			{PerspectiveID: "performance", Outcome: OutcomeRetryFailed, ErrorMessage: "all attempts failed"},
@@ -1512,7 +1512,7 @@ func TestMissingPerspectivesReport_FailedInterviews(t *testing.T) {
 		TotalInterviews: 2,
 		Succeeded:       1,
 		Failed:          1,
-		Degraded:        true,
+		PartialFailure:        true,
 		FailedInterviews: []FailedInterview{
 			{PerspectiveID: "ux-analyst", Outcome: InterviewCrashed, ErrorMessage: "exit status 1"},
 		},
@@ -1539,7 +1539,7 @@ func TestMissingPerspectivesReport_MixedFailures(t *testing.T) {
 		TotalSpecialists: 3,
 		Succeeded:        2,
 		Failed:           1,
-		Degraded:         true,
+		PartialFailure:         true,
 		FailedSpecialists: []FailedSpecialist{
 			{PerspectiveID: "security", Outcome: OutcomeCrashed, ErrorMessage: "killed"},
 		},
@@ -1548,7 +1548,7 @@ func TestMissingPerspectivesReport_MixedFailures(t *testing.T) {
 		TotalInterviews: 2,
 		Succeeded:       1,
 		Failed:          1,
-		Degraded:        true,
+		PartialFailure:        true,
 		FailedInterviews: []FailedInterview{
 			{PerspectiveID: "performance", Outcome: InterviewTimeout, ErrorMessage: "deadline exceeded"},
 		},
@@ -1576,7 +1576,7 @@ func TestMissingPerspectivesReport_DeduplicatesSpecialistAndInterview(t *testing
 		TotalSpecialists: 2,
 		Succeeded:        1,
 		Failed:           1,
-		Degraded:         true,
+		PartialFailure:         true,
 		FailedSpecialists: []FailedSpecialist{
 			{PerspectiveID: "security", Outcome: OutcomeCrashed, ErrorMessage: "killed"},
 		},

@@ -42,7 +42,7 @@ PMs are not developers. Code-level details, file paths, and function names are n
 
 **Additional references** (read if available):
 3. `{ANALYZE_STATE_DIR}/perspectives.json` — perspective information
-4. `{ANALYZE_STATE_DIR}/verified-findings-*.md` — per-perspective detailed results (use `Glob` to find)
+4. `{ANALYZE_STATE_DIR}/perspectives/*/verified-findings.json` — per-perspective detailed results (use `Glob` to find)
 
 ### Step 2: Read Report Template
 

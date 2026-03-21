@@ -38,7 +38,7 @@ The target reader is a developer. Include technical details, code references, an
 
 **Additional references** (read if available):
 - `{ANALYZE_STATE_DIR}/perspectives.json` — perspective information
-- `{ANALYZE_STATE_DIR}/verified-findings-*.md` — per-perspective detailed results (use `Glob` to find)
+- `{ANALYZE_STATE_DIR}/perspectives/*/verified-findings.json` — per-perspective detailed results (use `Glob` to find)
 
 ### Step 2: Read Report Template
 

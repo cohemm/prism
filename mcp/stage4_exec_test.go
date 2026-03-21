@@ -171,7 +171,7 @@ func TestBuildSynthesisSystemPromptDegradedMode(t *testing.T) {
 			Succeeded:     1,
 			Failed:        1,
 			TotalFindings: 2,
-			Degraded:      true,
+			PartialFailure:      true,
 			Results: []SpecialistResult{
 				{
 					PerspectiveID: "p1",
@@ -521,7 +521,7 @@ func TestBuildSynthesisSystemPromptMissingPerspectives(t *testing.T) {
 			Failed:           1,
 			TotalSpecialists: 3,
 			TotalFindings:    4,
-			Degraded:         true,
+			PartialFailure:         true,
 			Results: []SpecialistResult{
 				{PerspectiveID: "p1", Outcome: OutcomeSuccess, FindingsCount: 2,
 					Findings: &SpecialistFindings{Analyst: "p1", Findings: []SpecialistFinding{
@@ -543,7 +543,7 @@ func TestBuildSynthesisSystemPromptMissingPerspectives(t *testing.T) {
 			Succeeded:       1,
 			Failed:          1,
 			TotalInterviews: 2,
-			Degraded:        true,
+			PartialFailure:        true,
 			AverageScore:    0.80,
 			Results: []InterviewResult{
 				{PerspectiveID: "p1", Outcome: InterviewSuccess, Verdict: "pass", Score: 0.80,
@@ -645,7 +645,7 @@ func TestReportSavedToReportsDir(t *testing.T) {
 	}
 
 	// Create a task with reportDir set
-	task := newAnalysisTask("analyze-abc123", "claude-sonnet-4-6", stateDir, reportDir)
+	task := newAnalysisTask("analyze-abc123", "claude-sonnet-4-6", stateDir, reportDir, "")
 
 	// Verify the expected report path
 	task.mu.RLock()

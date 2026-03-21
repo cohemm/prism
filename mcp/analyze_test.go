@@ -118,7 +118,7 @@ func TestHandleTaskStatusRemovedTask(t *testing.T) {
 	taskStore = NewTaskStore()
 
 	// Create a task, then remove it (simulates lost state or cleanup)
-	task := taskStore.Create("ctx-removed", "claude-sonnet-4-6", "/tmp/state", "/tmp/reports")
+	task := taskStore.Create("ctx-removed", "claude-sonnet-4-6", "/tmp/state", "/tmp/reports", "")
 	taskID := task.ID
 
 	// Verify it exists first
@@ -154,7 +154,7 @@ func TestHandleTaskStatusServerRestart(t *testing.T) {
 	// Simulate server restart: old task_id from previous session
 	// is polled against a fresh (empty) TaskStore
 	taskStore = NewTaskStore()
-	oldTask := taskStore.Create("ctx-old", "claude-sonnet-4-6", "/tmp/state", "/tmp/reports")
+	oldTask := taskStore.Create("ctx-old", "claude-sonnet-4-6", "/tmp/state", "/tmp/reports", "")
 	oldTaskID := oldTask.ID
 
 	// "Restart" — replace the store with a fresh one
@@ -176,7 +176,7 @@ func TestHandleTaskStatusServerRestart(t *testing.T) {
 
 func TestHandleTaskStatusQueued(t *testing.T) {
 	taskStore = NewTaskStore()
-	task := taskStore.Create("ctx-test", "claude-sonnet-4-6", "/tmp/state", "/tmp/reports")
+	task := taskStore.Create("ctx-test", "claude-sonnet-4-6", "/tmp/state", "/tmp/reports", "")
 
 	result, err := handleTaskStatus(context.Background(), makeStatusRequest(task.ID))
 	if err != nil {
@@ -206,7 +206,7 @@ func TestHandleTaskStatusQueued(t *testing.T) {
 
 func TestHandleTaskStatusRunning(t *testing.T) {
 	taskStore = NewTaskStore()
-	task := taskStore.Create("ctx-running", "claude-sonnet-4-6", "/tmp/state", "/tmp/reports")
+	task := taskStore.Create("ctx-running", "claude-sonnet-4-6", "/tmp/state", "/tmp/reports", "")
 	task.SetStatus(TaskStatusRunning)
 	task.StartStage(StageScope, "analyzing seed")
 
@@ -235,7 +235,7 @@ func TestHandleTaskStatusRunning(t *testing.T) {
 
 func TestHandleTaskStatusCompleted(t *testing.T) {
 	taskStore = NewTaskStore()
-	task := taskStore.Create("ctx-done", "claude-sonnet-4-6", "/tmp/state", "/tmp/reports")
+	task := taskStore.Create("ctx-done", "claude-sonnet-4-6", "/tmp/state", "/tmp/reports", "")
 	task.SetReportPath("/tmp/reports/final.md")
 
 	result, err := handleTaskStatus(context.Background(), makeStatusRequest(task.ID))
@@ -259,7 +259,7 @@ func TestHandleTaskStatusCompleted(t *testing.T) {
 
 func TestHandleTaskStatusFailed(t *testing.T) {
 	taskStore = NewTaskStore()
-	task := taskStore.Create("ctx-fail", "claude-sonnet-4-6", "/tmp/state", "/tmp/reports")
+	task := taskStore.Create("ctx-fail", "claude-sonnet-4-6", "/tmp/state", "/tmp/reports", "")
 	task.SetError("scope analysis failed")
 
 	result, err := handleTaskStatus(context.Background(), makeStatusRequest(task.ID))
@@ -283,7 +283,7 @@ func TestHandleTaskStatusFailed(t *testing.T) {
 
 func TestHandleTaskStatusParallelProgress(t *testing.T) {
 	taskStore = NewTaskStore()
-	task := taskStore.Create("ctx-parallel", "claude-sonnet-4-6", "/tmp/state", "/tmp/reports")
+	task := taskStore.Create("ctx-parallel", "claude-sonnet-4-6", "/tmp/state", "/tmp/reports", "")
 	task.SetStatus(TaskStatusRunning)
 	task.CompleteStage(StageScope, "done")
 	task.StartStage(StageSpecialist, "running 5 specialists")

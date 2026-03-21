@@ -27,7 +27,7 @@ func TestParallelTaskDirectoryIsolation(t *testing.T) {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			task := store.Create("", "claude-sonnet-4-6", "", "")
+			task := store.Create("", "claude-sonnet-4-6", "", "", "")
 			contextID := task.ID
 			stateDir := filepath.Join(stateBase, contextID)
 			reportDir := filepath.Join(reportBase, contextID)
@@ -248,7 +248,7 @@ func TestConcurrentPipelineSimulation(t *testing.T) {
 			defer wg.Done()
 
 			// Create task (mimics handleAnalyze)
-			task := store.Create("", "claude-sonnet-4-6", "", "")
+			task := store.Create("", "claude-sonnet-4-6", "", "", "")
 			stateDir := filepath.Join(tmpDir, "state", task.ID)
 			reportDir := filepath.Join(tmpDir, "reports", task.ID)
 			task.UpdateDirs(task.ID, stateDir, reportDir)

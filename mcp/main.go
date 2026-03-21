@@ -57,9 +57,10 @@ func main() {
 			mcp.WithString("topic", mcp.Required(), mcp.Description("What to analyze — the central question or subject")),
 			mcp.WithString("model", mcp.Description("Claude model to use for all stages. Default: claude-sonnet-4-6")),
 			mcp.WithString("input_context", mcp.Description("Absolute path to input file providing additional context for the analysis")),
-			mcp.WithString("ontology_scope", mcp.Description("JSON string of ontology scope mapping (pre-resolved by caller). Keys are perspective IDs, values are arrays of document paths.")),
+			mcp.WithString("ontology_scope", mcp.Description("JSON string of ontology scope in canonical {\"sources\": [...]} format (pre-resolved by caller). Written to state dir as ontology-scope.json.")),
 			mcp.WithString("seed_hints", mcp.Description("Additional guidance for the seed analyst stage")),
 			mcp.WithString("report_template", mcp.Description("Absolute path to a custom report template file")),
+			mcp.WithString("session_id", mcp.Description("Optional session identifier. When provided, task_id becomes analyze-{session_id} for deterministic tracking")),
 		),
 		handleAnalyze,
 	)
@@ -70,6 +71,14 @@ func main() {
 			mcp.WithString("task_id", mcp.Required(), mcp.Description("The task identifier returned by prism_analyze")),
 		),
 		handleTaskStatus,
+	)
+
+	s.AddTool(
+		mcp.NewTool("prism_cancel_task",
+			mcp.WithDescription("Cancel a running analysis task. Propagates cancellation to all in-flight subprocess work (specialists, interviews, synthesis). Returns the updated task snapshot. No-op if the task is already completed or failed."),
+			mcp.WithString("task_id", mcp.Required(), mcp.Description("The task identifier returned by prism_analyze")),
+		),
+		handleCancelTask,
 	)
 
 	s.AddTool(

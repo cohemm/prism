@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -39,11 +40,18 @@ func handleAnalyze(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 	if topic == "" {
 		return mcp.NewToolResultError("topic is required and must be non-empty"), nil
 	}
+	const maxTopicLen = 10_000
+	if len([]rune(topic)) > maxTopicLen {
+		return mcp.NewToolResultError(fmt.Sprintf("topic exceeds maximum length of %d characters", maxTopicLen)), nil
+	}
 
 	model, _ := request.Params.Arguments["model"].(string)
 	model = strings.TrimSpace(model)
 	if model == "" {
 		model = "claude-sonnet-4-6" // default model
+	}
+	if !strings.HasPrefix(model, "claude-") {
+		return mcp.NewToolResultError(fmt.Sprintf("invalid model %q: must start with 'claude-'", model)), nil
 	}
 
 	inputContext, _ := request.Params.Arguments["input_context"].(string)
@@ -59,6 +67,9 @@ func handleAnalyze(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 
 	reportTemplate, _ := request.Params.Arguments["report_template"].(string)
 	reportTemplate = strings.TrimSpace(reportTemplate)
+
+	sessionID, _ := request.Params.Arguments["session_id"].(string)
+	sessionID = strings.TrimSpace(sessionID)
 
 	// Validate input_context file exists if provided
 	if inputContext != "" {
@@ -81,7 +92,8 @@ func handleAnalyze(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 
 	// Create a task to get the generated ID
 	// We use a temporary contextID first, then derive directories from task ID
-	task := taskStore.Create("", model, "", "")
+	// When session_id is provided, task_id becomes "analyze-{session_id}"
+	task := taskStore.Create("", model, "", "", sessionID)
 
 	// The task ID is "analyze-{12hex}", use it as the context ID and directory name
 	contextID := task.ID
@@ -135,9 +147,30 @@ func handleAnalyze(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 		return mcp.NewToolResultError(fmt.Sprintf("failed to write config.json: %v", err)), nil
 	}
 
+	// --- Write ontology-scope.json to state directory ---
+	// The ontology_scope parameter is a JSON string in canonical {"sources": [...]} format.
+	// Write it as ontology-scope.json so loadOntologyScopeText() can read it in all stages.
+	if ontologyScope != "" {
+		// Validate that the ontology_scope is valid JSON before writing
+		if !json.Valid([]byte(ontologyScope)) {
+			taskStore.Remove(task.ID)
+			return mcp.NewToolResultError("ontology_scope must be valid JSON"), nil
+		}
+		scopePath := filepath.Join(stateDir, "ontology-scope.json")
+		if err := os.WriteFile(scopePath, []byte(ontologyScope), 0644); err != nil {
+			taskStore.Remove(task.ID)
+			return mcp.NewToolResultError(fmt.Sprintf("failed to write ontology-scope.json: %v", err)), nil
+		}
+	}
+
 	log.Printf("Analysis task %s created: topic=%q model=%s state=%s", task.ID, topic, model, stateDir)
 
 	// --- Launch analysis pipeline in background goroutine ---
+	// Create a cancellable context so that prism_cancel_task (and server shutdown)
+	// can propagate cancellation to all in-flight subprocess work.
+	pipelineCtx, pipelineCancel := context.WithCancel(context.Background())
+	task.Ctx = pipelineCtx
+	task.Cancel = pipelineCancel
 
 	go runAnalysisPipeline(task)
 
@@ -162,9 +195,27 @@ func handleTaskStatus(ctx context.Context, request mcp.CallToolRequest) (*mcp.Ca
 		return mcp.NewToolResultError("task_id is required"), nil
 	}
 
-	snapshot, found := taskStore.Snapshot(taskID)
-	if !found {
+	task := taskStore.Get(taskID)
+	if task == nil {
 		return mcp.NewToolResultError(fmt.Sprintf("task not found: %s", taskID)), nil
+	}
+
+	// Enforce max poll iterations for non-terminal tasks.
+	// After MaxPollIterations (120) polls at 30-second intervals (60 minutes),
+	// auto-cancel the task to prevent infinite polling.
+	snapshot := task.Snapshot()
+	if !snapshot.Status.IsTerminal() {
+		pollCount := task.IncrPollCount()
+		if pollCount > MaxPollIterations {
+			log.Printf("[%s] Poll limit exceeded (%d > %d) — cancelling task",
+				taskID, pollCount, MaxPollIterations)
+			if task.Cancel != nil {
+				task.Cancel()
+			}
+			task.SetError(fmt.Sprintf("poll limit exceeded: %d polls (max %d) — task timed out after prolonged execution", pollCount, MaxPollIterations))
+			// Re-take snapshot after failure
+			snapshot = task.Snapshot()
+		}
 	}
 
 	resultBytes, err := json.Marshal(snapshot)
@@ -318,6 +369,50 @@ func extractSection(content string, sectionName string) string {
 	return ""
 }
 
+// handleCancelTask cancels a running analysis task by triggering context cancellation.
+// This propagates to all in-flight subprocess work (specialists, interviews, synthesis).
+func handleCancelTask(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	taskID, _ := request.Params.Arguments["task_id"].(string)
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return mcp.NewToolResultError("task_id is required"), nil
+	}
+
+	task := taskStore.Get(taskID)
+	if task == nil {
+		return mcp.NewToolResultError(fmt.Sprintf("task not found: %s", taskID)), nil
+	}
+
+	// Check if already in a terminal state
+	snapshot := task.Snapshot()
+	if snapshot.Status.IsTerminal() {
+		resp := map[string]string{
+			"task_id": taskID,
+			"status":  string(snapshot.Status),
+			"message": fmt.Sprintf("task already %s — nothing to cancel", snapshot.Status),
+		}
+		resultBytes, _ := json.Marshal(resp)
+		return mcp.NewToolResultText(string(resultBytes)), nil
+	}
+
+	// Cancel the pipeline context to stop all in-flight work
+	if task.Cancel != nil {
+		task.Cancel()
+	}
+
+	task.SetError("cancelled by user via prism_cancel_task")
+	log.Printf("[%s] Task cancelled by user", taskID)
+
+	// Return updated snapshot
+	snapshot = task.Snapshot()
+	resultBytes, err := json.Marshal(snapshot)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal response: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(resultBytes)), nil
+}
+
 // AnalysisConfig holds the configuration read from config.json in the state directory.
 type AnalysisConfig struct {
 	Topic          string `json:"topic"`
@@ -348,7 +443,7 @@ func readAnalysisConfig(stateDir string) (AnalysisConfig, error) {
 // StageResult holds the outcome of a single parallel sub-task (specialist or interview).
 type StageResult struct {
 	PerspectiveID string // which perspective this result belongs to
-	OutputPath    string // path to the output file (findings.json or verified-findings.md)
+	OutputPath    string // path to the output file (findings.json or verified-findings.json)
 	Err           error  // nil on success
 }
 
@@ -362,6 +457,13 @@ type StageResult struct {
 //  3. Interview: parallel verification sessions (one per perspective)
 //  4. Synthesis: report generation from verified findings
 func runAnalysisPipeline(task *AnalysisTask) {
+	// Ensure cancel is called when pipeline exits to release resources.
+	defer func() {
+		if task.Cancel != nil {
+			task.Cancel()
+		}
+	}()
+
 	task.SetStatus(TaskStatusRunning)
 	log.Printf("[%s] Pipeline started", task.ID)
 
@@ -428,9 +530,9 @@ func runAnalysisPipeline(task *AnalysisTask) {
 
 	detail := fmt.Sprintf("%d/%d succeeded, %d findings collected",
 		collected.Succeeded, numPerspectives, collected.TotalFindings)
-	if collected.Degraded {
-		detail += fmt.Sprintf(" (%d failed — degraded)", collected.Failed)
-		log.Printf("[%s] Stage specialist: degraded — %s", task.ID, collected.DegradationNotice())
+	if collected.PartialFailure {
+		detail += fmt.Sprintf(" (%d failed — partial)", collected.Failed)
+		log.Printf("[%s] Stage specialist: partial failure — %s", task.ID, collected.DegradationNotice())
 	}
 	task.CompleteStage(StageSpecialist, detail)
 	log.Printf("[%s] Stage specialist: completed — %s", task.ID, detail)
@@ -467,8 +569,8 @@ func runAnalysisPipeline(task *AnalysisTask) {
 	if collectedVerifications.AverageScore > 0 {
 		intDetail += fmt.Sprintf(", avg score: %.2f", collectedVerifications.AverageScore)
 	}
-	if collectedVerifications.Degraded {
-		log.Printf("[%s] Stage interview: degraded — %s", task.ID, collectedVerifications.InterviewDegradationNotice())
+	if collectedVerifications.PartialFailure {
+		log.Printf("[%s] Stage interview: partial failure — %s", task.ID, collectedVerifications.InterviewDegradationNotice())
 	}
 	task.CompleteStage(StageInterview, intDetail)
 	log.Printf("[%s] Stage interview: completed — %s", task.ID, intDetail)
@@ -533,25 +635,38 @@ func runScopeStage(task *AnalysisTask, cfg AnalysisConfig) ([]Perspective, error
 // runSpecialistStage executes parallel finding sessions for each perspective.
 // Each specialist runs as a separate claude CLI subprocess with concurrency
 // limited by the ParallelExecutor (default: 4 concurrent subprocesses).
+// LoadSpecialistContext is called once via BuildAllSpecialistCommands, then
+// pre-built commands are passed to each runSpecialistSession.
 // Updates task parallel progress counters as specialists complete.
 func runSpecialistStage(task *AnalysisTask, cfg AnalysisConfig, perspectives []Perspective) []StageResult {
 	task.mu.RLock()
-	stateDir := task.StateDir
 	taskID := task.ID
 	task.mu.RUnlock()
 
-	jobs := make([]ParallelJob, len(perspectives))
-	for i, p := range perspectives {
-		perspective := p // capture for closure
+	// Build all specialist commands once — loads shared context (seed summary,
+	// ontology scope, doc paths) a single time instead of per-perspective.
+	commands, err := BuildAllSpecialistCommands(cfg, perspectives)
+	if err != nil {
+		// Return an error result for each perspective
+		results := make([]StageResult, len(perspectives))
+		for i := range perspectives {
+			results[i] = StageResult{Err: fmt.Errorf("build specialist commands: %w", err)}
+		}
+		return results
+	}
+
+	jobs := make([]ParallelJob, len(commands))
+	for i, c := range commands {
+		cmd := c // capture for closure
 		jobs[i] = ParallelJob{
-			PerspectiveID: perspective.ID,
+			PerspectiveID: cmd.PerspectiveID,
 			Fn: func(ctx context.Context) StageResult {
-				err := runSpecialistSession(ctx, task, cfg, perspective)
+				err := runSpecialistSession(ctx, task, cmd)
 				if err != nil {
 					return StageResult{Err: err}
 				}
 				return StageResult{
-					OutputPath: filepath.Join(stateDir, "perspectives", perspective.ID, "findings.json"),
+					OutputPath: cmd.OutputPath,
 				}
 			},
 		}
@@ -572,7 +687,7 @@ func runSpecialistStage(task *AnalysisTask, cfg AnalysisConfig, perspectives []P
 		},
 	}
 
-	pr := executor.Execute(context.Background(), jobs)
+	pr := executor.Execute(task.Ctx, jobs)
 	return pr.Results
 }
 
@@ -581,37 +696,37 @@ func runSpecialistStage(task *AnalysisTask, cfg AnalysisConfig, perspectives []P
 // Updates task parallel progress counters.
 func runInterviewStage(task *AnalysisTask, cfg AnalysisConfig, perspectives []Perspective, specialistResults []StageResult) []StageResult {
 	task.mu.RLock()
-	stateDir := task.StateDir
 	taskID := task.ID
 	task.mu.RUnlock()
 
-	// Filter to only perspectives with successful specialist results
-	type verifyItem struct {
-		perspective  Perspective
-		findingsPath string
-	}
-	var toVerify []verifyItem
-	for i, r := range specialistResults {
-		if r.Err == nil {
-			toVerify = append(toVerify, verifyItem{
-				perspective:  perspectives[i],
-				findingsPath: r.OutputPath,
-			})
+	// Build all interview commands upfront — loads shared context once,
+	// reads specialist findings from disk for each perspective, and skips
+	// perspectives without valid findings.
+	commands, err := BuildAllInterviewCommands(cfg, perspectives, specialistResults)
+	if err != nil {
+		log.Printf("[%s] Interview stage: failed to build commands: %v", taskID, err)
+		// Return failure results for all successful specialist results
+		results := make([]StageResult, 0)
+		for _, r := range specialistResults {
+			if r.Err == nil {
+				results = append(results, StageResult{Err: err})
+			}
 		}
+		return results
 	}
 
-	jobs := make([]ParallelJob, len(toVerify))
-	for i, item := range toVerify {
-		perspective := item.perspective // capture for closure
+	jobs := make([]ParallelJob, len(commands))
+	for i, cmd := range commands {
+		cmd := cmd // capture for closure
 		jobs[i] = ParallelJob{
-			PerspectiveID: perspective.ID,
+			PerspectiveID: cmd.PerspectiveID,
 			Fn: func(ctx context.Context) StageResult {
-				err := runInterviewSession(task, cfg, perspective)
+				err := runInterviewSession(ctx, task, cmd)
 				if err != nil {
 					return StageResult{Err: err}
 				}
 				return StageResult{
-					OutputPath: filepath.Join(stateDir, fmt.Sprintf("verified-findings-%s.md", perspective.ID)),
+					OutputPath: cmd.OutputPath,
 				}
 			},
 		}
@@ -632,7 +747,7 @@ func runInterviewStage(task *AnalysisTask, cfg AnalysisConfig, perspectives []Pe
 		},
 	}
 
-	pr := executor.Execute(context.Background(), jobs)
+	pr := executor.Execute(task.Ctx, jobs)
 	return pr.Results
 }
 
@@ -659,9 +774,66 @@ func runSynthesisStage(task *AnalysisTask, cfg AnalysisConfig, perspectives []Pe
 // runSpecialistSession is implemented in stage2_exec.go
 
 // runInterviewSession runs a single verification/interview session via claude CLI subprocess.
-func runInterviewSession(task *AnalysisTask, cfg AnalysisConfig, perspective Perspective) error {
-	// TODO: Implement claude CLI subprocess call for interview/verification
-	return fmt.Errorf("interview session not yet implemented")
+// It takes a pre-built InterviewCommand (constructed via BuildAllInterviewCommands)
+// to avoid redundant LoadInterviewContext calls per perspective.
+//
+// The subprocess runs in the perspective-specific working directory with no shared state,
+// making it safe for concurrent execution via goroutines.
+//
+// The ctx parameter carries the per-job timeout set by the ParallelExecutor. This function
+// does NOT create its own timeout — the executor manages timeouts centrally to ensure
+// consistent behavior across all parallel jobs.
+func runInterviewSession(ctx context.Context, task *AnalysisTask, cmd InterviewCommand) error {
+	log.Printf("[%s] Interview %s: starting CLI subprocess (model=%s, maxTurns=%d, workDir=%s)",
+		task.ID, cmd.PerspectiveID, cmd.Model, cmd.MaxTurns, cmd.WorkDir)
+
+	// Run claude CLI with tool access and structured output.
+	// The ctx already carries a per-job timeout from the ParallelExecutor.
+	rawOutput, err := queryLLMScopedWithToolsAndSchema(
+		ctx,
+		cmd.WorkDir,
+		cmd.Model,
+		cmd.JSONSchema,
+		cmd.SystemPrompt,
+		cmd.UserPrompt,
+		cmd.MaxTurns,
+	)
+	if err != nil {
+		return fmt.Errorf("interview %s subprocess: %w", cmd.PerspectiveID, err)
+	}
+
+	// Extract JSON from potentially wrapped output
+	jsonStr, err := extractJSON(rawOutput)
+	if err != nil {
+		return fmt.Errorf("extract interview %s JSON: %w (raw length: %d)", cmd.PerspectiveID, err, len(rawOutput))
+	}
+
+	// Parse into VerifiedFindings struct
+	var verified VerifiedFindings
+	if err := json.Unmarshal([]byte(jsonStr), &verified); err != nil {
+		return fmt.Errorf("parse interview %s verified findings: %w", cmd.PerspectiveID, err)
+	}
+
+	// Validate: must have at least one finding
+	if len(verified.Findings) == 0 {
+		return fmt.Errorf("interview %s produced no verified findings", cmd.PerspectiveID)
+	}
+
+	// Ensure analyst field matches perspective ID
+	if verified.Analyst == "" {
+		verified.Analyst = cmd.PerspectiveID
+	}
+
+	// Write verified-findings.json to the perspective directory
+	if err := WriteVerifiedFindings(cmd.OutputPath, verified); err != nil {
+		return fmt.Errorf("write interview %s verified findings: %w", cmd.PerspectiveID, err)
+	}
+
+	log.Printf("[%s] Interview %s: completed with verdict=%s, score=%.2f, %d findings → %s",
+		task.ID, cmd.PerspectiveID, verified.Verdict, verified.Score.WeightedTotal,
+		len(verified.Findings), cmd.OutputPath)
+
+	return nil
 }
 
 // runReportGeneration runs the synthesis/report generation via a single claude CLI subprocess.
@@ -670,5 +842,8 @@ func runInterviewSession(task *AnalysisTask, cfg AnalysisConfig, perspective Per
 // the final analysis report. The report is validated for required sections and written to disk.
 // Implemented in stage4_exec.go via runSynthesisSession.
 func runReportGeneration(task *AnalysisTask, cfg AnalysisConfig, perspectives []Perspective, results []StageResult, reportPath string) error {
-	return runSynthesisSession(context.Background(), task, cfg, perspectives, reportPath)
+	// Synthesis timeout: 30 minutes
+	ctx, cancel := context.WithTimeout(task.Ctx, 30*time.Minute)
+	defer cancel()
+	return runSynthesisSession(ctx, task, cfg, perspectives, reportPath)
 }

@@ -70,9 +70,10 @@ type CollectedFindings struct {
 	// stage can explicitly note which perspectives are missing and why.
 	SkippedPerspectives []SkippedPerspective `json:"skipped_perspectives,omitempty"`
 
-	// Degraded is true when at least one specialist failed but the analysis
-	// can continue with partial results.
-	Degraded bool `json:"degraded"`
+	// PartialFailure is true when at least one specialist failed but at least
+	// one succeeded, meaning the analysis continues with incomplete coverage.
+	// False when all succeed (nothing failed) or all fail (nothing to degrade to).
+	PartialFailure bool `json:"partial_failure"`
 }
 
 // AnnotatedFinding is a single finding with its source perspective ID attached.
@@ -161,7 +162,7 @@ func CollectSpecialistResults(taskID string, stageResults []StageResult, perspec
 		}
 	}
 
-	collected.Degraded = collected.Failed > 0 && collected.Succeeded > 0
+	collected.PartialFailure = collected.Failed > 0 && collected.Succeeded > 0
 
 	return collected
 }
@@ -214,18 +215,30 @@ func processSpecialistResult(perspectiveID string, sr StageResult) SpecialistRes
 	return result
 }
 
-// classifyError categorizes an error from a specialist subprocess into a
-// specific SpecialistOutcome and human-readable error class string.
-// This enables the synthesis stage to produce specific degradation notices.
-func classifyError(err error) (SpecialistOutcome, string) {
-	msg := err.Error()
+// errorCategory represents a classified error category shared across
+// specialist and interview error classification.
+type errorCategory int
 
+const (
+	categoryRetryExhausted errorCategory = iota
+	categoryTimeout
+	categoryCancelled
+	categoryCrash
+	categoryParseError
+	categoryUnknown
+)
+
+// classifyErrorMessage inspects an error message string and returns a
+// shared errorCategory plus the human-readable error class string.
+// Both classifyError and classifyInterviewError delegate to this function
+// to ensure consistent classification logic.
+func classifyErrorMessage(msg string) (errorCategory, string) {
 	// Retry exhaustion check FIRST — the wrapped error may contain timeout/crash
 	// strings from the underlying cause, but the primary classification should
 	// be retry_exhausted when the ParallelExecutor has given up.
 	if strings.Contains(msg, "all attempts failed") ||
 		strings.Contains(msg, "no more retries") {
-		return OutcomeRetryFailed, "retry_exhausted"
+		return categoryRetryExhausted, "retry_exhausted"
 	}
 
 	// Context cancellation / timeout
@@ -234,9 +247,9 @@ func classifyError(err error) (SpecialistOutcome, string) {
 		strings.Contains(msg, "timed out") ||
 		strings.Contains(msg, "timeout") {
 		if strings.Contains(msg, "deadline exceeded") || strings.Contains(msg, "timed out") || strings.Contains(msg, "timeout") {
-			return OutcomeTimeout, "subprocess_timeout"
+			return categoryTimeout, "subprocess_timeout"
 		}
-		return OutcomeCancelled, "context_cancelled"
+		return categoryCancelled, "context_cancelled"
 	}
 
 	// Process crash signals
@@ -244,7 +257,7 @@ func classifyError(err error) (SpecialistOutcome, string) {
 		strings.Contains(msg, "exit status") ||
 		strings.Contains(msg, "killed") ||
 		strings.Contains(msg, "broken pipe") {
-		return OutcomeCrashed, "subprocess_crash"
+		return categoryCrash, "subprocess_crash"
 	}
 
 	// JSON parse errors
@@ -252,11 +265,32 @@ func classifyError(err error) (SpecialistOutcome, string) {
 		strings.Contains(msg, "invalid character") ||
 		strings.Contains(msg, "unexpected end of JSON") ||
 		strings.Contains(msg, "parse") {
-		return OutcomeParseError, "output_parse_error"
+		return categoryParseError, "output_parse_error"
 	}
 
-	// Default: treat as crash
-	return OutcomeCrashed, "unknown_error"
+	// Default: unknown
+	return categoryUnknown, "unknown_error"
+}
+
+// classifyError categorizes an error from a specialist subprocess into a
+// specific SpecialistOutcome and human-readable error class string.
+// This enables the synthesis stage to produce specific degradation notices.
+func classifyError(err error) (SpecialistOutcome, string) {
+	cat, class := classifyErrorMessage(err.Error())
+	switch cat {
+	case categoryRetryExhausted:
+		return OutcomeRetryFailed, class
+	case categoryTimeout:
+		return OutcomeTimeout, class
+	case categoryCancelled:
+		return OutcomeCancelled, class
+	case categoryCrash:
+		return OutcomeCrashed, class
+	case categoryParseError:
+		return OutcomeParseError, class
+	default:
+		return OutcomeCrashed, class
+	}
 }
 
 // CollectedFindingsPath returns the path to collected-findings.json
@@ -307,9 +341,9 @@ func (cf *CollectedFindings) SuccessfulPerspectiveIDs() []string {
 }
 
 // DegradationNotice generates a human-readable summary of failed specialists
-// for inclusion in the final report. Returns empty string if no degradation.
+// for inclusion in the final report. Returns empty string if no failures.
 func (cf *CollectedFindings) DegradationNotice() string {
-	if !cf.Degraded && cf.Failed == 0 {
+	if cf.Failed == 0 {
 		return ""
 	}
 
@@ -392,9 +426,11 @@ type CollectedVerifications struct {
 	// exhaustion. These perspectives have unverified findings only.
 	SkippedInterviews []SkippedPerspective `json:"skipped_interviews,omitempty"`
 
-	// Degraded is true when at least one interview failed but the analysis
-	// can continue with unverified findings from the specialist stage.
-	Degraded bool `json:"degraded"`
+	// PartialFailure is true when at least one interview failed but at least
+	// one succeeded, meaning unverified findings from the specialist stage
+	// are used for the failed perspectives.
+	// False when all succeed (nothing failed) or all fail (nothing to degrade to).
+	PartialFailure bool `json:"partial_failure"`
 
 	// AverageScore is the weighted average verification score across all
 	// successful interviews. Zero if no interviews succeeded.
@@ -492,7 +528,7 @@ func CollectInterviewResults(taskID string, stageResults []StageResult, perspect
 		}
 	}
 
-	collected.Degraded = collected.Failed > 0 && collected.Succeeded > 0
+	collected.PartialFailure = collected.Failed > 0 && collected.Succeeded > 0
 
 	if scoreCount > 0 {
 		collected.AverageScore = totalScore / float64(scoreCount)
@@ -554,45 +590,21 @@ func processInterviewResult(perspectiveID string, sr StageResult) InterviewResul
 // classifyInterviewError categorizes an error from an interview subprocess into a
 // specific InterviewOutcome and human-readable error class string.
 func classifyInterviewError(err error) (InterviewOutcome, string) {
-	msg := err.Error()
-
-	// Retry exhaustion check FIRST — the wrapped error may contain timeout/crash
-	// strings from the underlying cause, but the primary classification should
-	// be retry_exhausted when the ParallelExecutor has given up.
-	if strings.Contains(msg, "all attempts failed") ||
-		strings.Contains(msg, "no more retries") {
-		return InterviewRetryFailed, "retry_exhausted"
+	cat, class := classifyErrorMessage(err.Error())
+	switch cat {
+	case categoryRetryExhausted:
+		return InterviewRetryFailed, class
+	case categoryTimeout:
+		return InterviewTimeout, class
+	case categoryCancelled:
+		return InterviewCancelled, class
+	case categoryCrash:
+		return InterviewCrashed, class
+	case categoryParseError:
+		return InterviewParseError, class
+	default:
+		return InterviewCrashed, class
 	}
-
-	// Context cancellation / timeout
-	if strings.Contains(msg, "context deadline exceeded") ||
-		strings.Contains(msg, "context canceled") ||
-		strings.Contains(msg, "timed out") ||
-		strings.Contains(msg, "timeout") {
-		if strings.Contains(msg, "deadline exceeded") || strings.Contains(msg, "timed out") || strings.Contains(msg, "timeout") {
-			return InterviewTimeout, "subprocess_timeout"
-		}
-		return InterviewCancelled, "context_cancelled"
-	}
-
-	// Process crash signals
-	if strings.Contains(msg, "signal:") ||
-		strings.Contains(msg, "exit status") ||
-		strings.Contains(msg, "killed") ||
-		strings.Contains(msg, "broken pipe") {
-		return InterviewCrashed, "subprocess_crash"
-	}
-
-	// JSON parse errors
-	if strings.Contains(msg, "unmarshal") ||
-		strings.Contains(msg, "invalid character") ||
-		strings.Contains(msg, "unexpected end of JSON") ||
-		strings.Contains(msg, "parse") {
-		return InterviewParseError, "output_parse_error"
-	}
-
-	// Default: treat as crash
-	return InterviewCrashed, "unknown_error"
 }
 
 // CollectedVerificationsPath returns the path to collected-verifications.json
@@ -642,9 +654,9 @@ func (cv *CollectedVerifications) SuccessfulInterviewIDs() []string {
 }
 
 // InterviewDegradationNotice generates a human-readable summary of failed interviews
-// for inclusion in the final report. Returns empty string if no degradation.
+// for inclusion in the final report. Returns empty string if no failures.
 func (cv *CollectedVerifications) InterviewDegradationNotice() string {
-	if !cv.Degraded && cv.Failed == 0 {
+	if cv.Failed == 0 {
 		return ""
 	}
 

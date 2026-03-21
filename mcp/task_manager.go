@@ -1,12 +1,19 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 )
+
+// MaxPollIterations is the maximum number of prism_task_status polls allowed
+// per task before the task is auto-cancelled. With a 30-second polling interval,
+// 120 iterations gives a 60-minute maximum wait time.
+const MaxPollIterations = 120
 
 // TaskStatus represents the lifecycle state of an analysis task.
 type TaskStatus string
@@ -88,10 +95,20 @@ type AnalysisTask struct {
 	// Result/error
 	ReportPath string `json:"report_path,omitempty"`
 	Error      string `json:"error,omitempty"`
+
+	// PollCount tracks the number of prism_task_status calls for this task.
+	// After MaxPollIterations is exceeded, the task is auto-cancelled and failed.
+	PollCount int `json:"-"`
+
+	// Ctx is the cancellable context for the pipeline goroutine.
+	// Cancel terminates all in-flight subprocess work.
+	Ctx    context.Context    `json:"-"`
+	Cancel context.CancelFunc `json:"-"`
 }
 
 // newAnalysisTask creates a new task with all stages initialized to pending.
-func newAnalysisTask(contextID, model, stateDir, reportDir string) *AnalysisTask {
+// sessionID is optional — when non-empty, the task ID becomes "analyze-{sessionID}".
+func newAnalysisTask(contextID, model, stateDir, reportDir, sessionID string) *AnalysisTask {
 	now := time.Now().UTC()
 	stages := make(map[StageName]*StageProgress, 4)
 	for _, name := range AllStages() {
@@ -101,7 +118,7 @@ func newAnalysisTask(contextID, model, stateDir, reportDir string) *AnalysisTask
 		}
 	}
 	return &AnalysisTask{
-		ID:        generateTaskID(),
+		ID:        generateTaskID(sessionID),
 		Status:    TaskStatusQueued,
 		CreatedAt: now,
 		UpdatedAt: now,
@@ -224,6 +241,15 @@ func (t *AnalysisTask) UpdateStageDetail(name StageName, detail string) {
 	t.UpdatedAt = time.Now().UTC()
 }
 
+// IncrPollCount atomically increments the poll counter and returns the new count.
+// Used by handleTaskStatus to enforce MaxPollIterations.
+func (t *AnalysisTask) IncrPollCount() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.PollCount++
+	return t.PollCount
+}
+
 // UpdateDirs sets the context ID, state directory, and report directory.
 // Used after task creation when directories are derived from the generated task ID.
 func (t *AnalysisTask) UpdateDirs(contextID, stateDir, reportDir string) {
@@ -297,8 +323,8 @@ func NewTaskStore() *TaskStore {
 }
 
 // Create adds a new task to the store and returns it.
-func (s *TaskStore) Create(contextID, model, stateDir, reportDir string) *AnalysisTask {
-	task := newAnalysisTask(contextID, model, stateDir, reportDir)
+func (s *TaskStore) Create(contextID, model, stateDir, reportDir, sessionID string) *AnalysisTask {
+	task := newAnalysisTask(contextID, model, stateDir, reportDir, sessionID)
 	s.mu.Lock()
 	s.tasks[task.ID] = task
 	s.mu.Unlock()
@@ -340,19 +366,23 @@ func (s *TaskStore) List() []TaskSnapshot {
 	for _, task := range s.tasks {
 		snapshots = append(snapshots, task.Snapshot())
 	}
-	// Sort by created_at descending (most recent first)
-	for i := 0; i < len(snapshots); i++ {
-		for j := i + 1; j < len(snapshots); j++ {
-			if snapshots[j].CreatedAt.After(snapshots[i].CreatedAt) {
-				snapshots[i], snapshots[j] = snapshots[j], snapshots[i]
-			}
+	// Sort by created_at descending (most recent first), break ties by ID descending
+	sort.Slice(snapshots, func(i, j int) bool {
+		if snapshots[i].CreatedAt.Equal(snapshots[j].CreatedAt) {
+			return snapshots[i].ID > snapshots[j].ID
 		}
-	}
+		return snapshots[i].CreatedAt.After(snapshots[j].CreatedAt)
+	})
 	return snapshots
 }
 
-// generateTaskID creates a unique task identifier: "analyze-{12 hex chars}"
-func generateTaskID() string {
+// generateTaskID creates a unique task identifier.
+// If sessionID is non-empty, returns "analyze-{sessionID}" for deterministic tracking.
+// Otherwise returns "analyze-{12 hex chars}" with a random suffix.
+func generateTaskID(sessionID string) string {
+	if sessionID != "" {
+		return "analyze-" + sessionID
+	}
 	b := make([]byte, 6) // 6 bytes = 12 hex chars
 	if _, err := rand.Read(b); err != nil {
 		// Fallback to timestamp-based ID if crypto/rand fails

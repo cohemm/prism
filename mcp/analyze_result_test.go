@@ -75,7 +75,7 @@ func TestHandleAnalyzeResultNotFound(t *testing.T) {
 
 func TestHandleAnalyzeResultStillRunning(t *testing.T) {
 	taskStore = NewTaskStore()
-	task := taskStore.Create("ctx-run", "claude-sonnet-4-6", "/tmp/state", "/tmp/reports")
+	task := taskStore.Create("ctx-run", "claude-sonnet-4-6", "/tmp/state", "/tmp/reports", "")
 	task.SetStatus(TaskStatusRunning)
 
 	result, err := handleAnalyzeResult(context.Background(), makeResultRequest(task.ID))
@@ -96,7 +96,7 @@ func TestHandleAnalyzeResultStillRunning(t *testing.T) {
 
 func TestHandleAnalyzeResultQueued(t *testing.T) {
 	taskStore = NewTaskStore()
-	task := taskStore.Create("ctx-q", "claude-sonnet-4-6", "/tmp/state", "/tmp/reports")
+	task := taskStore.Create("ctx-q", "claude-sonnet-4-6", "/tmp/state", "/tmp/reports", "")
 	// Default status is queued
 
 	result, err := handleAnalyzeResult(context.Background(), makeResultRequest(task.ID))
@@ -114,7 +114,7 @@ func TestHandleAnalyzeResultQueued(t *testing.T) {
 
 func TestHandleAnalyzeResultFailed(t *testing.T) {
 	taskStore = NewTaskStore()
-	task := taskStore.Create("ctx-fail", "claude-sonnet-4-6", "/tmp/state", "/tmp/reports")
+	task := taskStore.Create("ctx-fail", "claude-sonnet-4-6", "/tmp/state", "/tmp/reports", "")
 	task.SetError("scope analysis exploded")
 
 	result, err := handleAnalyzeResult(context.Background(), makeResultRequest(task.ID))
@@ -175,7 +175,7 @@ Raw data available in state directory.
 		t.Fatalf("failed to write test report: %v", err)
 	}
 
-	task := taskStore.Create("ctx-done", "claude-sonnet-4-6", "/tmp/state", tmpDir)
+	task := taskStore.Create("ctx-done", "claude-sonnet-4-6", "/tmp/state", tmpDir, "")
 	task.SetReportPath(reportPath)
 
 	result, err := handleAnalyzeResult(context.Background(), makeResultRequest(task.ID))
@@ -212,7 +212,7 @@ Raw data available in state directory.
 
 func TestHandleAnalyzeResultCompletedNoReportPath(t *testing.T) {
 	taskStore = NewTaskStore()
-	task := taskStore.Create("ctx-noreport", "claude-sonnet-4-6", "/tmp/state", "/tmp/reports")
+	task := taskStore.Create("ctx-noreport", "claude-sonnet-4-6", "/tmp/state", "/tmp/reports", "")
 	// Manually set completed without report path (edge case)
 	task.mu.Lock()
 	task.Status = TaskStatusCompleted
@@ -233,7 +233,7 @@ func TestHandleAnalyzeResultCompletedNoReportPath(t *testing.T) {
 
 func TestHandleAnalyzeResultReportFileUnreadable(t *testing.T) {
 	taskStore = NewTaskStore()
-	task := taskStore.Create("ctx-unreadable", "claude-sonnet-4-6", "/tmp/state", "/tmp/reports")
+	task := taskStore.Create("ctx-unreadable", "claude-sonnet-4-6", "/tmp/state", "/tmp/reports", "")
 	task.SetReportPath("/nonexistent/path/report.md")
 
 	result, err := handleAnalyzeResult(context.Background(), makeResultRequest(task.ID))

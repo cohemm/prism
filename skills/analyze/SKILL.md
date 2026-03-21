@@ -3,7 +3,7 @@ name: analyze
 description: Runs multi-perspective analysis via MCP server orchestration. Thin wrapper that handles user interaction (ontology scope mapping) then delegates all processing to prism_analyze MCP tool. General-purpose analysis engine — any topic can be analyzed against ontology documents.
 version: 6.0.0
 user-invocable: true
-allowed-tools: Read, Glob, Grep, Bash, Write, ToolSearch, AskUserQuestion, mcp__prism-mcp__prism_analyze, mcp__prism-mcp__prism_task_status, mcp__prism-mcp__prism_analyze_result, mcp__prism-mcp__prism_docs_roots, mcp__prism-mcp__prism_docs_list, mcp__prism-mcp__prism_docs_read, mcp__prism-mcp__prism_docs_search
+allowed-tools: Read, Glob, Grep, Bash, Write, ToolSearch, AskUserQuestion, WebFetch, WebSearch, mcp__prism-mcp__prism_analyze, mcp__prism-mcp__prism_task_status, mcp__prism-mcp__prism_analyze_result, mcp__prism-mcp__prism_docs_roots, mcp__prism-mcp__prism_docs_list, mcp__prism-mcp__prism_docs_read, mcp__prism-mcp__prism_docs_search
 ---
 
 # Multi-Perspective Analysis
@@ -54,9 +54,9 @@ Store the resolved description and config values.
 > Read and execute `protocols/ontology-scope-mapping.md` with:
 - `{AVAILABILITY_MODE}` = config's `ontology_mode` if present, otherwise `optional`
 - `{CALLER_CONTEXT}` = `"analysis"`
-- `{STATE_DIR}` = (temporary — ontology scope is passed to MCP tool, not written to disk)
+- `{STATE_DIR}` = `~/.prism/state/{task_id}/` (ontology-scope.json is written here for the MCP server to read)
 
-Resolve ontology scope to a JSON string mapping perspective IDs to document paths. If `ONTOLOGY_AVAILABLE=false` → pass `null` as `ontology_scope`.
+Resolve ontology scope to a JSON string in canonical `{"sources": [...]}` format. If `ONTOLOGY_AVAILABLE=false` → pass `null` as `ontology_scope`.
 
 ### Phase 1 Exit Gate
 
