@@ -127,8 +127,8 @@ func runDAReviewLoop(task *AnalysisTask, cfg AnalysisConfig) error {
 			string(seedData),
 		)
 
-		// Call LLM for DA review (5-minute timeout per round)
-		ctx, cancel := context.WithTimeout(task.Ctx, 5*time.Minute)
+		// Call LLM for DA review (30-minute timeout per round)
+		ctx, cancel := context.WithTimeout(task.Ctx, 30*time.Minute)
 		rawOutput, err := queryLLMScopedWithSystemPrompt(ctx, stateDir, cfg.Model, daPrompt, userPrompt)
 		cancel()
 		if err != nil {
