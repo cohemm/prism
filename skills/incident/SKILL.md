@@ -1,16 +1,27 @@
 ---
 name: incident
-description: Incident root cause analysis with UX impact — takes an incident description (text + optional screenshots) as input, runs multi-perspective analysis including UX impact perspective via analyze, then post-processes into a developer-facing RCA report. Use this skill for "incident analysis", "incident postmortem", "RCA", "root cause analysis", "incident review", "장애 분석", "인시던트 분석", "장애 리뷰", "포스트모템", or any request about analyzing an incident or outage.
-version: 1.0.0
+description: Incident root cause analysis with UX impact — takes an incident description (text + optional screenshots) as input, runs multi-perspective analysis including UX impact perspective via prism_analyze MCP pipeline, producing a developer-facing RCA report. Use this skill for "incident analysis", "incident postmortem", "RCA", "root cause analysis", "incident review", "장애 분석", "인시던트 분석", "장애 리뷰", "포스트모템", or any request about analyzing an incident or outage.
+version: 2.0.0
 user-invocable: true
-allowed-tools: Skill, Task, Read, Write, Bash, Glob, Grep, AskUserQuestion, ToolSearch
+allowed-tools: Read, Glob, Grep, Bash, Write, ToolSearch, AskUserQuestion, WebFetch, WebSearch, mcp__prism-mcp__prism_analyze, mcp__prism-mcp__prism_task_status, mcp__prism-mcp__prism_analyze_result, mcp__prism-mcp__prism_cancel_task, mcp__prism-mcp__prism_docs_roots, mcp__prism-mcp__prism_docs_list, mcp__prism-mcp__prism_docs_read, mcp__prism-mcp__prism_docs_search
 ---
 
-# Incident RCA Analysis (Wrapper for analyze)
+# Incident RCA Analysis (Thin Wrapper for prism_analyze)
 
-Takes an incident description (text + optional screenshots) as input, runs multi-perspective analysis via `prism:analyze` with UX impact perspective guidance, then post-processes the results into a developer-facing RCA report.
+Takes an incident description (text + optional screenshots) as input, runs multi-perspective analysis via `prism_analyze` MCP pipeline with UX impact perspective injection and language-aware synthesis, producing a developer-facing RCA report directly from the MCP server.
 
-## Phase 0: Input
+This skill is a thin wrapper that:
+1. Collects incident input and resolves ontology scope (user interaction required)
+2. Calls `prism_analyze` with incident-specific config including `perspective_injection` and `language`
+3. Polls `prism_task_status` for progress updates
+4. Retrieves results via `prism_analyze_result` when complete
+5. Presents the final RCA report to the user
+
+---
+
+## Phase 0: Incident Input Collection
+
+This phase performs **only** input collection — no ontology resolution, no MCP calls.
 
 ### Step 0.1: Get Incident Description
 
@@ -18,166 +29,192 @@ Extract the incident description from `$ARGUMENTS`.
 
 - Description provided → store as `{INCIDENT_DESCRIPTION}`
 - No description → `AskUserQuestion` (header: "Incident", question: "Please describe the incident to analyze. You can include text description and optional screenshot paths.")
-- If the description references image/screenshot paths → verify files exist via `Read`. Store paths as `{SCREENSHOT_PATHS}` (comma-separated). If no images, set `{SCREENSHOT_PATHS}` to empty string.
 
-### Step 0.2: Generate Session ID
+### Step 0.2: Screenshot Text Extraction
 
-```bash
-uuidgen | tr '[:upper:]' '[:lower:]' | cut -c1-8
-```
+If the description references image/screenshot paths:
+1. Verify each file exists via `Read`
+2. For each screenshot, read the file content using the `Read` tool (which supports multimodal image reading)
+3. Incorporate the visual content description as text into `{INCIDENT_DESCRIPTION}`
 
-Generate ONCE, reuse throughout. Create state directories for both incident and analyze (shared session ID):
+Store the enriched description (original text + inlined screenshot descriptions) as `{INCIDENT_DESCRIPTION}`.
 
-```bash
-mkdir -p ~/.prism/state/incident-{short-id}
-mkdir -p ~/.prism/state/analyze-{short-id}
-```
+If no screenshots are referenced, skip this step.
 
 ### Step 0.3: Language Detection
 
 1. If CLAUDE.md contains a `Language` directive → use that language
 2. Otherwise → detect from user's input language in this session
-3. Store as `{REPORT_LANGUAGE}`
+3. Store as `{REPORT_LANGUAGE}` (e.g., "ko", "en", "ja")
 
 ### Phase 0 Exit Gate
 
-- [ ] Incident description collected and stored as `{INCIDENT_DESCRIPTION}`
-- [ ] `{SCREENSHOT_PATHS}` determined (may be empty)
-- [ ] `{short-id}` generated and `~/.prism/state/incident-{short-id}/` directory created
+- [ ] `{INCIDENT_DESCRIPTION}` collected (with screenshot content inlined if any)
 - [ ] `{REPORT_LANGUAGE}` determined
 
-→ **NEXT: Phase 1 — Create config and invoke analyze**
+→ **NEXT ACTION: Proceed to Phase 1 — Resolve Scope.**
 
 ---
 
-## Phase 1: Config & Analyze Invocation
+## Phase 1: Resolve SKILL_DIR & Ontology Scope
 
-### Step 1.1: Prepare Context
+### Step 1.1: Resolve SKILL_DIR
 
-Combine the incident description and any screenshot references into a single context block.
-
-If `{SCREENSHOT_PATHS}` is not empty, append to the description:
-```
-Referenced screenshots: {SCREENSHOT_PATHS}
-```
-
-### Step 1.2: Create Analyze Config
-
-Write the following JSON to `~/.prism/state/incident-{short-id}/analyze-config.json`:
-
-```json
-{
-  "topic": "Incident root cause analysis: {first 80 chars of INCIDENT_DESCRIPTION} — multi-perspective analysis of root cause, contributing factors, and user-facing UX impact",
-  "input_context": "{INCIDENT_DESCRIPTION with screenshot paths if any}",
-  "report_template": "{SKILL_DIR}/templates/report.md",
-  "seed_hints": "This is an incident/outage analysis. Investigate root cause, contributing factors, and timeline. Perspectives should cover technical root cause, system architecture implications, and operational gaps. Use available tools (Grep, Read, Bash, MCP) to trace the incident through the codebase.",
-  "ontology_mode": "optional",
-  "session_id": "{short-id}"
-}
-```
-
-> Determine the absolute path of the directory containing this SKILL.md via `Bash`. Store it as `{SKILL_DIR}` for use in Step 2.1.
-
-### Step 1.3: Write Perspective Injection
-
-Copy the UX impact perspective to the analyze state directory. This file will be merged into `perspectives.json` by analyze's merge script after perspective generation.
+Determine the absolute path of the directory containing this SKILL.md:
 
 ```bash
-cp {SKILL_DIR}/perspectives/ux-impact.json ~/.prism/state/analyze-{short-id}/perspective_injection.json
+# Find this skill's directory
+dirname $(find ~/.claude -path "*/skills/incident/SKILL.md" -o -path "*/incident/SKILL.md" 2>/dev/null | head -1) 2>/dev/null || echo ""
 ```
 
-### Step 1.4: Invoke Analyze
+If the above fails, use `Glob` to find `**/skills/incident/SKILL.md` and extract the directory. Store as `{SKILL_DIR}`.
 
-```
-Skill(skill="prism:analyze", args="--config ~/.prism/state/incident-{short-id}/analyze-config.json")
-```
+### Step 1.2: Ontology Scope Mapping
 
-Wait for analyze to complete. If analyze fails or the user cancels mid-execution → ERROR: "Analyze skill failed or was cancelled. Check ~/.prism/state/ for partial results." and terminate.
+> Read and execute `../analyze/protocols/ontology-scope-mapping.md` (relative to `{SKILL_DIR}`) with:
+- `{AVAILABILITY_MODE}` = `optional`
+- `{CALLER_CONTEXT}` = `"incident analysis"`
+- `{STATE_DIR}` = Generate a short-id via `Bash(uuidgen | tr '[:upper:]' '[:lower:]' | cut -c1-8)`, then `mkdir -p ~/.prism/state/analyze-{short-id}` and use that path. Store `{short-id}` for use as `session_id`.
 
-Analyze internally handles:
-- Seed analyst investigation of incident and related code areas
-- Multi-perspective generation + merging injected UX perspective (from perspective_injection.json)
-- Per-perspective analyst spawning
-- Socratic verification of findings
-- Report generation
-
-### Step 1.5: Locate Analyze Output
-
-The analyze state directory is already known: `~/.prism/state/analyze-{short-id}` (shared session ID).
-
-Verify the following files exist:
-- `~/.prism/state/analyze-{short-id}/analyst-findings.md` — verified analysis results
-- `~/.prism/state/analyze-{short-id}/verification-log.json` — Socratic verification scores (may not exist — this is tolerated because the post-processor has a 3-tier fallback for confidence scores)
-
-Store `~/.prism/state/analyze-{short-id}` as `{ANALYZE_STATE_DIR}`.
+Resolve ontology scope to a JSON string in canonical `{"sources": [...]}` format. If `ONTOLOGY_AVAILABLE=false` → pass `null` as `ontology_scope`.
 
 ### Phase 1 Exit Gate
 
-- [ ] `analyze-config.json` written
-- [ ] `prism:analyze` skill invocation completed
-- [ ] `{ANALYZE_STATE_DIR}` identified and `analyst-findings.md` exists
+- [ ] `{SKILL_DIR}` resolved
+- [ ] Ontology scope resolved (JSON string or null)
+- [ ] `{short-id}` generated and `~/.prism/state/analyze-{short-id}/` directory created
 
-→ **NEXT: Phase 2 — Post-processing (RCA report generation)**
+→ **NEXT ACTION: Proceed to Phase 2 — Start Analysis.**
 
 ---
 
-## Phase 2: Post-Processing (RCA Report Generation)
+## Phase 2: Start Analysis via MCP
 
-The output from analyze is a multi-perspective analysis report. A post-processor agent transforms it into a developer-facing RCA report with UX impact analysis.
-
-### Step 2.1: Spawn Post-Processor Agent
-
-Read `prompts/post-processor.md` (relative to this SKILL.md).
+### Step 2.1: Call prism_analyze
 
 ```
-Task(
-  subagent_type="prism:finder",
-  model="opus",
-  prompt="{post-processor prompt with placeholders replaced}"
+mcp__prism-mcp__prism_analyze(
+  topic: "Incident root cause analysis: {first 80 chars of INCIDENT_DESCRIPTION} — multi-perspective analysis of root cause, contributing factors, and user-facing UX impact\n\n{full INCIDENT_DESCRIPTION with inlined screenshot descriptions}",
+  session_id: "{short-id}",
+  ontology_scope: "{ontology scope JSON string or omit if null}",
+  seed_hints: "This is an incident/outage analysis. Research directions: (1) Identify the trigger — the immediate event or change that initiated the incident (recent deploys, config changes, dependency updates). (2) Trace the root cause chain — follow error propagation from the trigger through the system to understand why it caused failure. (3) Map contributing factors — discover code areas with missing error handling, absent monitoring/alerting, inadequate fallbacks, or insufficient test coverage that allowed the incident to escalate. (4) Reconstruct timeline evidence — look for logs, metrics, deployment timestamps, and commit history that establish when the incident started, escalated, was detected, and resolved. (5) Discover user-facing impact paths — trace how the technical failure propagated to user-facing components (API responses, UI rendering, data consistency). Perspectives should cover technical root cause, system architecture implications, operational gaps, and error handling resilience. Use available tools (Grep, Read, Bash, MCP) to trace the incident through the codebase. Prioritize breadth: discover as many distinct affected code areas and systems as possible.",
+  report_template: "{SKILL_DIR}/templates/report.md",
+  perspective_injection: "{SKILL_DIR}/perspectives/ux-impact.json",
+  language: "{REPORT_LANGUAGE}"
 )
 ```
 
-**CRITICAL: Do NOT add `run_in_background=true`.** Must wait for post-processing results.
-
-Placeholder replacements:
-- `{ANALYZE_STATE_DIR}` → analyze result directory path identified in Step 1.5
-- `{INCIDENT_DESCRIPTION}` → original incident description
-- `{INCIDENT_STATE_DIR}` → `~/.prism/state/incident-{short-id}`
-- `{REPORT_LANGUAGE}` → language determined in Phase 0.3
-- `{SHORT_ID}` → session ID
-- `{REPORT_TEMPLATE_PATH}` → `{SKILL_DIR}/templates/report.md` (absolute path, from Step 1.2)
-
-### Step 2.2: Verify Output
-
-After post-processor agent completes, verify report file exists:
-
-```
-~/.prism/state/incident-{short-id}/incident-rca-report.md
+The MCP server returns immediately with:
+```json
+{
+  "task_id": "analyze-xxxxxxxx",
+  "status": "running",
+  "message": "Analysis started"
+}
 ```
 
-If missing → ERROR: "Post-processor agent failed to generate report."
+Store the `task_id` for polling.
 
 ### Phase 2 Exit Gate
 
-- [ ] Post-processor agent completed
-- [ ] `incident-rca-report.md` exists
-- [ ] Report contains "Root Cause" section (verify via `Grep`)
+- [ ] `task_id` received from `prism_analyze`
 
-→ **NEXT: Phase 3 — Deliver report**
+→ **NEXT ACTION: Proceed to Phase 3 — Poll for Progress.**
 
 ---
 
-## Phase 3: Output
+## Phase 3: Progress Polling
 
-### Step 3.1: Report to User
+### Step 3.1: Poll Status
 
-Inform the user of the results:
+Poll `prism_task_status` every 30 seconds until status is `completed` or `failed`:
 
 ```
-Incident RCA analysis complete.
-
-Report location:
-- ~/.prism/state/incident-{short-id}/incident-rca-report.md
-
-Analyze raw results: {ANALYZE_STATE_DIR}/
+mcp__prism-mcp__prism_task_status(task_id: "{task_id}")
 ```
+
+Response includes:
+- `status`: "running" | "completed" | "failed"
+- `stage`: current stage name (e.g., "scope", "specialists", "interview", "synthesis")
+- `progress`: human-readable progress description
+- `details`: stage-specific details (e.g., specialist count, completed count)
+
+### Step 3.2: Display Progress
+
+On each poll, display the current stage and progress to the user. Format as a brief status update:
+
+```
+🔍 Incident analysis in progress...
+  Stage: {stage} — {progress}
+```
+
+If status changes to a new stage, announce it:
+```
+✅ {previous_stage} complete
+🔍 Starting {new_stage}...
+```
+
+### Step 3.3: Handle Cancellation
+
+If the user requests cancellation during polling, call `prism_cancel_task(task_id)` and report the result.
+
+### Step 3.4: Handle Failure
+
+If status is `failed`:
+- Display the error message to the user
+- Suggest re-running with the same incident description
+
+### Phase 3 Exit Gate
+
+- [ ] Status is `completed` or `failed`
+
+→ If completed: **Proceed to Phase 4 — Retrieve & Present Results.**
+→ If failed: **Stop and report error.**
+
+---
+
+## Phase 4: Retrieve & Present Results
+
+### Step 4.1: Get Analysis Result
+
+```
+mcp__prism-mcp__prism_analyze_result(task_id: "{task_id}")
+```
+
+Response includes:
+- `report_path`: absolute path to the final RCA report file
+- `summary`: executive summary extracted from the report
+
+### Step 4.2: Present Report
+
+1. Read the report file at `report_path`
+2. Present the executive summary to the user
+3. Tell the user the full report location: `report_path`
+4. Mention that raw analysis artifacts are at `~/.prism/state/analyze-{short-id}/`
+
+### Phase 4 Exit Gate
+
+- [ ] Report path and summary retrieved
+- [ ] Summary presented to user
+- [ ] Full report path communicated
+
+---
+
+## Pipeline Summary
+
+```
+Phase 0 [incident input collection — description, screenshot extraction, language detection]
+→ Phase 1 [SKILL_DIR + ontology scope — user interaction in main session]
+→ Phase 2 [prism_analyze call with perspective_injection + language — starts MCP server pipeline]
+→ Phase 3 [poll prism_task_status — display progress]
+→ Phase 4 [prism_analyze_result — present RCA report]
+```
+
+The MCP server internally executes the full 4-stage pipeline:
+- Stage 1: Scope (seed analysis + DA review + perspective generation + UX perspective injection merge)
+- Stage 2a: Specialists (parallel finding sessions including UX impact analyst)
+- Stage 2b: Interview (parallel Socratic verification)
+- Stage 3: Synthesis (RCA report generation in specified language using report template)
+
+All intermediate artifacts are stored at `~/.prism/state/analyze-{short-id}/`.
+Final report is saved to `~/.prism/reports/`.

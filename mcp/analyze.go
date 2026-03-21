@@ -71,6 +71,12 @@ func handleAnalyze(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 	sessionID, _ := request.Params.Arguments["session_id"].(string)
 	sessionID = strings.TrimSpace(sessionID)
 
+	language, _ := request.Params.Arguments["language"].(string)
+	language = strings.TrimSpace(language)
+
+	perspectiveInjection, _ := request.Params.Arguments["perspective_injection"].(string)
+	perspectiveInjection = strings.TrimSpace(perspectiveInjection)
+
 	// Validate input_context file exists if provided
 	if inputContext != "" {
 		if _, err := os.Stat(inputContext); err != nil {
@@ -82,6 +88,22 @@ func handleAnalyze(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 	if reportTemplate != "" {
 		if _, err := os.Stat(reportTemplate); err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("report_template file not found: %s", reportTemplate)), nil
+		}
+	}
+
+	// Validate perspective_injection file exists and contains valid JSON if provided
+	if perspectiveInjection != "" {
+		data, err := os.ReadFile(perspectiveInjection)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("perspective_injection file not found: %s", perspectiveInjection)), nil
+		}
+		// Validate it's a valid JSON array of perspective objects
+		var injectedPerspectives []Perspective
+		if err := json.Unmarshal(data, &injectedPerspectives); err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("perspective_injection file must contain a valid JSON array of perspective objects: %v", err)), nil
+		}
+		if len(injectedPerspectives) == 0 {
+			return mcp.NewToolResultError("perspective_injection file contains an empty array"), nil
 		}
 	}
 
@@ -134,6 +156,12 @@ func handleAnalyze(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 	}
 	if reportTemplate != "" {
 		config["report_template"] = reportTemplate
+	}
+	if language != "" {
+		config["language"] = language
+	}
+	if perspectiveInjection != "" {
+		config["perspective_injection"] = perspectiveInjection
 	}
 
 	configBytes, err := json.MarshalIndent(config, "", "  ")
@@ -427,7 +455,9 @@ type AnalysisConfig struct {
 	InputContext   string `json:"input_context,omitempty"`
 	OntologyScope  string `json:"ontology_scope,omitempty"`
 	SeedHints      string `json:"seed_hints,omitempty"`
-	ReportTemplate string `json:"report_template,omitempty"`
+	ReportTemplate         string `json:"report_template,omitempty"`
+	Language               string `json:"language,omitempty"`
+	PerspectiveInjection   string `json:"perspective_injection,omitempty"`
 }
 
 // readAnalysisConfig reads config.json from the task's state directory.
@@ -623,13 +653,33 @@ func runScopeStage(task *AnalysisTask, cfg AnalysisConfig) ([]Perspective, error
 	}
 
 	// Read the generated perspectives
-	pf, err := ReadPerspectives(filepath.Join(stateDir, "perspectives.json"))
+	perspPath := filepath.Join(stateDir, "perspectives.json")
+	pf, err := ReadPerspectives(perspPath)
 	if err != nil {
 		return nil, fmt.Errorf("read generated perspectives: %w", err)
 	}
 
 	if len(pf.Perspectives) == 0 {
 		return nil, fmt.Errorf("no perspectives generated")
+	}
+
+	// Sub-step 4: Merge injected perspectives (if perspective_injection provided)
+	if cfg.PerspectiveInjection != "" {
+		task.UpdateStageDetail(StageScope, "merging injected perspectives")
+		injected, err := loadInjectedPerspectives(cfg.PerspectiveInjection)
+		if err != nil {
+			// Non-fatal: log warning and continue with generated perspectives only
+			log.Printf("[%s] Warning: failed to load injected perspectives from %s: %v — continuing without injection",
+				task.ID, cfg.PerspectiveInjection, err)
+		} else if len(injected) > 0 {
+			pf.Perspectives = mergeInjectedPerspectives(pf.Perspectives, injected)
+			// Persist the merged perspective set back to disk
+			if err := WritePerspectives(perspPath, pf); err != nil {
+				return nil, fmt.Errorf("write merged perspectives: %w", err)
+			}
+			log.Printf("[%s] Merged %d injected perspectives — total: %d",
+				task.ID, len(injected), len(pf.Perspectives))
+		}
 	}
 
 	return pf.Perspectives, nil
@@ -849,4 +899,45 @@ func runReportGeneration(task *AnalysisTask, cfg AnalysisConfig, perspectives []
 	ctx, cancel := context.WithTimeout(task.Ctx, 30*time.Minute)
 	defer cancel()
 	return runSynthesisSession(ctx, task, cfg, perspectives, reportPath)
+}
+
+// loadInjectedPerspectives reads a JSON file containing an array of Perspective objects
+// to be merged into the generated perspective set after stage1.
+func loadInjectedPerspectives(filePath string) ([]Perspective, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("read perspective injection file: %w", err)
+	}
+
+	var perspectives []Perspective
+	if err := json.Unmarshal(data, &perspectives); err != nil {
+		return nil, fmt.Errorf("parse perspective injection file: %w", err)
+	}
+
+	return perspectives, nil
+}
+
+// mergeInjectedPerspectives appends injected perspectives to the generated set,
+// skipping any that have duplicate IDs with already-generated perspectives.
+// Injected perspectives are appended at the end to preserve the generated ordering.
+func mergeInjectedPerspectives(generated, injected []Perspective) []Perspective {
+	// Build a set of existing IDs for dedup
+	existingIDs := make(map[string]bool, len(generated))
+	for _, p := range generated {
+		existingIDs[p.ID] = true
+	}
+
+	merged := make([]Perspective, len(generated))
+	copy(merged, generated)
+
+	for _, p := range injected {
+		if existingIDs[p.ID] {
+			log.Printf("Perspective injection: skipping duplicate id %q (already in generated set)", p.ID)
+			continue
+		}
+		merged = append(merged, p)
+		existingIDs[p.ID] = true
+	}
+
+	return merged
 }

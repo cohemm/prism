@@ -45,6 +45,10 @@ type SynthesisContext struct {
 	// ReportTemplate is the report template content to fill.
 	ReportTemplate string
 
+	// Language is the target language for report output (e.g. "ko", "en", "ja").
+	// When empty, the report defaults to English.
+	Language string
+
 	// AnalysisDate is the formatted date of this analysis.
 	AnalysisDate string
 }
@@ -58,6 +62,7 @@ func LoadSynthesisContext(cfg AnalysisConfig, perspectives []Perspective) (Synth
 		StateDir:     cfg.StateDir,
 		ReportDir:    cfg.ReportDir,
 		Perspectives: perspectives,
+		Language:     cfg.Language,
 		AnalysisDate: time.Now().Format("2006-01-02"),
 	}
 
@@ -291,6 +296,15 @@ func buildSynthesisSystemPrompt(sctx SynthesisContext) string {
 	sb.WriteString("and the impact on analysis coverage. Place it between Perspective Findings and Integrated Analysis.\n")
 	sb.WriteString("9. Output ONLY the filled report in Markdown format. No extra commentary before or after.\n")
 
+	// --- Section 9: Language Override ---
+	if sctx.Language != "" {
+		sb.WriteString("\n---\n\n")
+		sb.WriteString("# Language Requirement\n\n")
+		sb.WriteString(fmt.Sprintf("IMPORTANT: The ENTIRE report MUST be written in **%s**.\n", sctx.Language))
+		sb.WriteString("Translate all section headings, analysis content, findings, recommendations, and summaries ")
+		sb.WriteString(fmt.Sprintf("into %s. Only preserve proper nouns, technical terms, code identifiers, and file paths in their original form.\n", sctx.Language))
+	}
+
 	return sb.String()
 }
 
@@ -310,6 +324,9 @@ func buildSynthesisUserPrompt(sctx SynthesisContext) string {
 			sctx.CollectedVerifications.Succeeded, sctx.CollectedVerifications.AverageScore))
 	}
 	sb.WriteString("\n\nFill the report template completely using the data provided in the system prompt. ")
+	if sctx.Language != "" {
+		sb.WriteString(fmt.Sprintf("Write the entire report in %s. ", sctx.Language))
+	}
 	sb.WriteString("Output only the Markdown report.")
 
 	return sb.String()

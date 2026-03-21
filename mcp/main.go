@@ -61,6 +61,8 @@ func main() {
 			mcp.WithString("seed_hints", mcp.Description("Additional guidance for the seed analyst stage")),
 			mcp.WithString("report_template", mcp.Description("Absolute path to a custom report template file")),
 			mcp.WithString("session_id", mcp.Description("Optional session identifier. When provided, task_id becomes analyze-{session_id} for deterministic tracking")),
+			mcp.WithString("language", mcp.Description("Language for the final report output (e.g. \"ko\", \"en\", \"ja\"). When omitted, the report is written in English by default")),
+			mcp.WithString("perspective_injection", mcp.Description("Absolute path to a JSON file containing additional perspectives to merge into the generated perspective set after stage1. The file must be a JSON array of perspective objects matching the standard perspective schema.")),
 		),
 		handleAnalyze,
 	)

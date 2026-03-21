@@ -246,6 +246,269 @@ func TestPerspectivesSchemaIsValidJSON(t *testing.T) {
 	}
 }
 
+// --- Tests for perspective injection merge (AC 7) ---
+
+func TestLoadInjectedPerspectives_ValidFile(t *testing.T) {
+	// Create a valid perspective injection JSON file
+	tmpDir := t.TempDir()
+	injectionPath := filepath.Join(tmpDir, "ux-impact.json")
+
+	injected := []Perspective{
+		{
+			ID:           "ux-impact",
+			Name:         "UX Impact Analysis",
+			Scope:        "Analyze user-facing impact",
+			KeyQuestions: []string{"What did users see?", "Which flows broke?"},
+			Model:        "sonnet",
+			Prompt: AnalystPrompt{
+				Role:               "You are the UX IMPACT ANALYST.",
+				InvestigationScope: "Trace from user symptom to root cause",
+				Tasks:              "1. Identify broken flows\n2. Trace cause through system",
+				OutputFormat:       "## UX Impact\n| Flow | Impact | Severity |",
+			},
+			Rationale: "Injected by incident wrapper",
+		},
+	}
+
+	data, err := json.MarshalIndent(injected, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal injected: %v", err)
+	}
+	if err := os.WriteFile(injectionPath, data, 0644); err != nil {
+		t.Fatalf("write injection file: %v", err)
+	}
+
+	// Load and verify
+	got, err := loadInjectedPerspectives(injectionPath)
+	if err != nil {
+		t.Fatalf("loadInjectedPerspectives: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 injected perspective, got %d", len(got))
+	}
+	if got[0].ID != "ux-impact" {
+		t.Errorf("expected id 'ux-impact', got %q", got[0].ID)
+	}
+	if got[0].Prompt.Role != "You are the UX IMPACT ANALYST." {
+		t.Errorf("prompt.role mismatch: %q", got[0].Prompt.Role)
+	}
+}
+
+func TestLoadInjectedPerspectives_FileNotFound(t *testing.T) {
+	_, err := loadInjectedPerspectives("/nonexistent/path/injection.json")
+	if err == nil {
+		t.Fatal("expected error for nonexistent file")
+	}
+}
+
+func TestLoadInjectedPerspectives_InvalidJSON(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "bad.json")
+	os.WriteFile(path, []byte("{not valid json"), 0644)
+
+	_, err := loadInjectedPerspectives(path)
+	if err == nil {
+		t.Fatal("expected error for invalid JSON")
+	}
+}
+
+func TestMergeInjectedPerspectives_AppendsNew(t *testing.T) {
+	generated := []Perspective{
+		{ID: "policy-conflict", Name: "Policy Conflict"},
+		{ID: "root-cause", Name: "Root Cause"},
+	}
+	injected := []Perspective{
+		{ID: "ux-impact", Name: "UX Impact"},
+	}
+
+	merged := mergeInjectedPerspectives(generated, injected)
+
+	if len(merged) != 3 {
+		t.Fatalf("expected 3 perspectives after merge, got %d", len(merged))
+	}
+	// Injected should be appended at the end
+	if merged[2].ID != "ux-impact" {
+		t.Errorf("expected injected perspective at end, got %q", merged[2].ID)
+	}
+	// Original order preserved
+	if merged[0].ID != "policy-conflict" || merged[1].ID != "root-cause" {
+		t.Error("original perspective order not preserved")
+	}
+}
+
+func TestMergeInjectedPerspectives_DeduplicatesByID(t *testing.T) {
+	generated := []Perspective{
+		{ID: "policy-conflict", Name: "Policy Conflict (generated)"},
+		{ID: "root-cause", Name: "Root Cause"},
+	}
+	injected := []Perspective{
+		{ID: "policy-conflict", Name: "Policy Conflict (injected)"}, // duplicate ID
+		{ID: "ux-impact", Name: "UX Impact"},
+	}
+
+	merged := mergeInjectedPerspectives(generated, injected)
+
+	if len(merged) != 3 {
+		t.Fatalf("expected 3 perspectives (1 deduped), got %d", len(merged))
+	}
+	// The duplicate should keep the generated version
+	if merged[0].Name != "Policy Conflict (generated)" {
+		t.Errorf("expected generated version preserved, got %q", merged[0].Name)
+	}
+	// ux-impact should still be appended
+	if merged[2].ID != "ux-impact" {
+		t.Errorf("expected non-duplicate injected perspective appended, got %q", merged[2].ID)
+	}
+}
+
+func TestMergeInjectedPerspectives_EmptyInjected(t *testing.T) {
+	generated := []Perspective{
+		{ID: "policy-conflict"},
+		{ID: "root-cause"},
+	}
+
+	merged := mergeInjectedPerspectives(generated, []Perspective{})
+
+	if len(merged) != 2 {
+		t.Fatalf("expected 2 perspectives (no injection), got %d", len(merged))
+	}
+}
+
+func TestMergeInjectedPerspectives_DoesNotMutateOriginal(t *testing.T) {
+	generated := []Perspective{
+		{ID: "policy-conflict"},
+	}
+	injected := []Perspective{
+		{ID: "ux-impact"},
+	}
+
+	// Copy original length
+	origLen := len(generated)
+	_ = mergeInjectedPerspectives(generated, injected)
+
+	// Original slice should not be mutated
+	if len(generated) != origLen {
+		t.Errorf("original generated slice was mutated: len %d → %d", origLen, len(generated))
+	}
+}
+
+func TestMergeInjectedPerspectives_WrittenToDisk(t *testing.T) {
+	// End-to-end: merge injected perspectives and write to perspectives.json
+	tmpDir := t.TempDir()
+	perspPath := filepath.Join(tmpDir, "perspectives.json")
+
+	// Write initial generated perspectives
+	generated := validPerspectivesOutput()
+	if err := WritePerspectives(perspPath, generated); err != nil {
+		t.Fatalf("write initial: %v", err)
+	}
+
+	// Load injected perspective from a file
+	injectionPath := filepath.Join(tmpDir, "injection.json")
+	injected := []Perspective{
+		{
+			ID:           "ux-impact",
+			Name:         "UX Impact Analysis",
+			Scope:        "User-facing impact",
+			KeyQuestions: []string{"What did users see?", "Which flows broke?"},
+			Model:        "sonnet",
+			Prompt: AnalystPrompt{
+				Role:               "You are the UX IMPACT ANALYST.",
+				InvestigationScope: "Trace from symptom to root cause",
+				Tasks:              "1. Identify broken flows",
+				OutputFormat:       "## UX Impact table",
+			},
+			Rationale: "Injected by incident wrapper",
+		},
+	}
+	injData, _ := json.MarshalIndent(injected, "", "  ")
+	os.WriteFile(injectionPath, injData, 0644)
+
+	// Load injected
+	loaded, err := loadInjectedPerspectives(injectionPath)
+	if err != nil {
+		t.Fatalf("load injected: %v", err)
+	}
+
+	// Merge
+	generated.Perspectives = mergeInjectedPerspectives(generated.Perspectives, loaded)
+
+	// Write merged result back
+	if err := WritePerspectives(perspPath, generated); err != nil {
+		t.Fatalf("write merged: %v", err)
+	}
+
+	// Read back and verify
+	readBack, err := ReadPerspectives(perspPath)
+	if err != nil {
+		t.Fatalf("read merged: %v", err)
+	}
+
+	if len(readBack.Perspectives) != 3 {
+		t.Fatalf("expected 3 perspectives after merge, got %d", len(readBack.Perspectives))
+	}
+
+	// Find the injected perspective
+	found := false
+	for _, p := range readBack.Perspectives {
+		if p.ID == "ux-impact" {
+			found = true
+			if p.Name != "UX Impact Analysis" {
+				t.Errorf("injected perspective name mismatch: %q", p.Name)
+			}
+			break
+		}
+	}
+	if !found {
+		t.Error("injected 'ux-impact' perspective not found in merged output")
+	}
+}
+
+func TestReadAnalysisConfigPerspectiveInjection(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := map[string]interface{}{
+		"topic":                 "test incident",
+		"model":                 "claude-sonnet-4-6",
+		"task_id":               "analyze-abc",
+		"context_id":            "analyze-abc",
+		"state_dir":             tmpDir,
+		"report_dir":            "/tmp/reports",
+		"perspective_injection": "/path/to/ux-impact.json",
+	}
+	data, _ := json.MarshalIndent(cfg, "", "  ")
+	os.WriteFile(filepath.Join(tmpDir, "config.json"), data, 0644)
+
+	got, err := readAnalysisConfig(tmpDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.PerspectiveInjection != "/path/to/ux-impact.json" {
+		t.Errorf("perspective_injection: got %q, want %q", got.PerspectiveInjection, "/path/to/ux-impact.json")
+	}
+}
+
+func TestReadAnalysisConfigNoPerspectiveInjection(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := map[string]interface{}{
+		"topic":      "test without injection",
+		"model":      "claude-sonnet-4-6",
+		"task_id":    "analyze-abc",
+		"context_id": "analyze-abc",
+		"state_dir":  tmpDir,
+		"report_dir": "/tmp/reports",
+	}
+	data, _ := json.MarshalIndent(cfg, "", "  ")
+	os.WriteFile(filepath.Join(tmpDir, "config.json"), data, 0644)
+
+	got, err := readAnalysisConfig(tmpDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.PerspectiveInjection != "" {
+		t.Errorf("perspective_injection should be empty when not provided, got %q", got.PerspectiveInjection)
+	}
+}
+
 func TestPerspectivesSchemaMatchesStruct(t *testing.T) {
 	// Verify that a valid PerspectivesOutput marshals to JSON that
 	// contains exactly the fields declared in the schema
