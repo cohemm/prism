@@ -8,12 +8,12 @@ NEEDS_BUILD=false
 if [ ! -f "$BIN" ]; then
   NEEDS_BUILD=true
 else
-  for f in "$DIR"/*.go; do
+  while IFS= read -r f; do
     if [ "$f" -nt "$BIN" ]; then
       NEEDS_BUILD=true
       break
     fi
-  done
+  done < <(find "$DIR" -name '*.go' -not -name '*_test.go')
 fi
 if [ "$NEEDS_BUILD" = true ]; then
   (cd "$DIR" && go build -o "$BIN" .) >&2
