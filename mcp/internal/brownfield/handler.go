@@ -33,6 +33,11 @@ func InitStore() error {
 	return storeErr
 }
 
+// SetStoreForTest replaces the package-level store (testing only).
+func SetStoreForTest(s *Store) {
+	store = s
+}
+
 // HandleBrownfield is the MCP tool handler for prism_brownfield.
 func HandleBrownfield(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	if store == nil {
