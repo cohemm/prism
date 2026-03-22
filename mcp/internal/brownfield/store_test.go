@@ -303,3 +303,33 @@ func TestReadReadmeTruncation(t *testing.T) {
 		t.Errorf("content length = %d, want %d", len(content), maxReadmeChars)
 	}
 }
+
+func TestSetDefaultsByRowIDsInvalidID(t *testing.T) {
+	s := newTestStore(t)
+	s.Register("/tmp/r1", "r1", "")
+	repos, _, _ := s.List(0, 0, false)
+	// Set r1 as default first
+	if err := s.SetDefaultsByRowIDs([]int64{repos[0].RowID}); err != nil {
+		t.Fatalf("set defaults: %v", err)
+	}
+
+	// Try to set a non-existent rowid
+	err := s.SetDefaultsByRowIDs([]int64{99999})
+	if err == nil {
+		t.Error("expected error for invalid rowid")
+	}
+
+	// Verify existing defaults are preserved (tx rolled back)
+	defaults, _, _ := s.List(0, 0, true)
+	if len(defaults) != 1 {
+		t.Errorf("existing defaults should be preserved, got %d", len(defaults))
+	}
+}
+
+func TestUpdateDescNotFound(t *testing.T) {
+	s := newTestStore(t)
+	err := s.UpdateDesc("/nonexistent/path", "some desc")
+	if err == nil {
+		t.Error("expected error for nonexistent repo")
+	}
+}

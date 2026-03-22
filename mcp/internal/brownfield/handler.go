@@ -86,8 +86,12 @@ func handleScan(ctx context.Context, args map[string]interface{}) (*mcp.CallTool
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("invalid scan_root: %v", err)), nil
 		}
-		home, _ := os.UserHomeDir()
-		if !strings.HasPrefix(abs, home) {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("cannot resolve home directory: %v", err)), nil
+		}
+		homePrefix := home + string(filepath.Separator)
+		if abs != home && !strings.HasPrefix(abs, homePrefix) {
 			return mcp.NewToolResultError("scan_root must be within home directory"), nil
 		}
 		scanRoot = abs
@@ -98,14 +102,13 @@ func handleScan(ctx context.Context, args map[string]interface{}) (*mcp.CallTool
 	}
 
 	count, err := store.BulkRegister(repos)
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("bulk register failed: %v", err)), nil
-	}
-
 	result := map[string]interface{}{
 		"action":     "scan",
 		"found":      len(repos),
 		"registered": count,
+	}
+	if err != nil {
+		result["warning"] = err.Error()
 	}
 	return jsonResult(result)
 }
