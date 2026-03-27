@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Configure documentation directories for prism skills (ontology-docs.json)
+description: Configure prism skills setup and brownfield repository integration
 version: 2.0.0
 user-invocable: true
 allowed-tools: Bash, Write, AskUserQuestion, ToolSearch, mcp__prism__prism_brownfield, mcp__plugin_prism_prism__prism_brownfield

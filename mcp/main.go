@@ -11,10 +11,6 @@ import (
 )
 
 func main() {
-	if err := handler.InitFilesystem(); err != nil {
-		log.Printf("Warning: filesystem init failed: %v", err)
-	}
-
 	// Initialize the task store for analysis orchestration
 	handler.TaskStore = taskpkg.NewTaskStore()
 
@@ -93,45 +89,6 @@ func main() {
 		),
 		handler.HandleAnalyzeResult,
 	)
-
-	// Filesystem tools (configured via ~/.prism/ontology-docs.json)
-	if len(handler.AllowedDirs) > 0 {
-		s.AddTool(
-			mcp.NewTool("prism_docs_roots",
-				mcp.WithDescription("Returns the list of configured documentation directories."),
-			),
-			handler.HandleListRoots,
-		)
-
-		s.AddTool(
-			mcp.NewTool("prism_docs_list",
-				mcp.WithDescription("List contents of a documentation directory. Only works within configured directories."),
-				mcp.WithString("path", mcp.Required(), mcp.Description("Directory path to list")),
-			),
-			handler.HandleListDir,
-		)
-
-		s.AddTool(
-			mcp.NewTool("prism_docs_read",
-				mcp.WithDescription("Read a file from documentation directories. Max 500KB. Use head/tail for large files."),
-				mcp.WithString("path", mcp.Required(), mcp.Description("File path to read")),
-				mcp.WithNumber("head", mcp.Description("Return only the first N lines")),
-				mcp.WithNumber("tail", mcp.Description("Return only the last N lines")),
-			),
-			handler.HandleReadFile,
-		)
-
-		s.AddTool(
-			mcp.NewTool("prism_docs_search",
-				mcp.WithDescription("Search for files by glob pattern within documentation directories. Skips hidden dirs and node_modules. Max 100 results."),
-				mcp.WithString("path", mcp.Required(), mcp.Description("Directory to search in")),
-				mcp.WithString("pattern", mcp.Required(), mcp.Description("Glob pattern to match filenames (e.g., *.md, *payment*)")),
-			),
-			handler.HandleSearchFiles,
-		)
-
-		log.Printf("Filesystem tools enabled: %d directories", len(handler.AllowedDirs))
-	}
 
 	// Brownfield repository registry
 	if err := brownfield.InitStore(); err != nil {

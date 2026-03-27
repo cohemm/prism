@@ -187,9 +187,6 @@ type InterviewContext struct {
 	// OntologyScopeText is the rendered ontology scope text block.
 	// Passed to verifier so it can re-investigate evidence sources.
 	OntologyScopeText string
-
-	// DocPaths are the registered ontology document directories.
-	DocPaths []string
 }
 
 // LoadInterviewContext reads the analysis config and state files to build
@@ -218,9 +215,6 @@ func LoadInterviewContext(cfg AnalysisConfig) (InterviewContext, error) {
 
 	// Build ontology scope text block
 	ctx.OntologyScopeText = LoadOntologyScopeText(cfg.StateDir)
-
-	// Load registered doc paths
-	ctx.DocPaths = LoadOntologyDocPaths()
 
 	return ctx, nil
 }
@@ -318,18 +312,6 @@ func buildInterviewSystemPrompt(ictx InterviewContext, perspective Perspective, 
 		sb.WriteString("N/A — ontology scope file not found. Verify using available evidence only.")
 	}
 	sb.WriteString("\n\n")
-
-	// Add doc paths for targeted re-investigation
-	if len(ictx.DocPaths) > 0 {
-		sb.WriteString("## Analysis Target Directories\n\n")
-		sb.WriteString("These directories were available to the analyst. Use them for re-investigation:\n\n")
-		for _, p := range ictx.DocPaths {
-			sb.WriteString("- ")
-			sb.WriteString(p)
-			sb.WriteString("\n")
-		}
-		sb.WriteString("\n")
-	}
 
 	// --- Section 6: Data Source Constraint ---
 	sb.WriteString("## Data Source Constraint\n\n")

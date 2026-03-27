@@ -3,7 +3,7 @@ name: analyze
 description: Runs multi-perspective analysis via MCP server orchestration. Thin wrapper that collects user input then delegates all processing to prism_analyze MCP tool. Ontology scope is automatically resolved from brownfield default repositories. General-purpose analysis engine — any topic can be analyzed.
 version: 7.0.0
 user-invocable: true
-allowed-tools: Read, Glob, Grep, Bash, Write, ToolSearch, AskUserQuestion, WebFetch, WebSearch, mcp__prism__prism_analyze, mcp__prism__prism_task_status, mcp__prism__prism_analyze_result, mcp__prism__prism_cancel_task, mcp__prism__prism_docs_roots, mcp__prism__prism_docs_list, mcp__prism__prism_docs_read, mcp__prism__prism_docs_search
+allowed-tools: Read, Glob, Grep, Bash, Write, ToolSearch, AskUserQuestion, WebFetch, WebSearch, mcp__prism__prism_analyze, mcp__prism__prism_task_status, mcp__prism__prism_analyze_result, mcp__prism__prism_cancel_task
 ---
 
 # Multi-Perspective Analysis

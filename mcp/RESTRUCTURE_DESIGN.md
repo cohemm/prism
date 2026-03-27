@@ -117,8 +117,6 @@ internal/
 | 16 | `interview.go` | 332 | `internal/handler/interview.go` | `handler` | handleInterview (MCP 도구 핸들러) |
 | 17 | `scorer.go` | 76 | `internal/handler/interview.go` (병합) | `handler` | scoreSession — interview와 합침 |
 | 18 | `da_review.go` | 394 | `internal/handler/review.go` | `handler` | handleDAReview, DAFinding |
-| 19 | `filesystem.go` | 204 | `internal/handler/docs.go` | `handler` | initFilesystem, prism_docs_* 핸들러 |
-
 **소스 파일 수 변화**: 19개 flat → 14개 파일 across 5 패키지 (병합으로 파일 수 감소)
 
 ---

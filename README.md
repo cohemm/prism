@@ -14,7 +14,7 @@ How has humanity solved its hardest problems? Diverse minds in a room, arguing u
 |-------|---------|-------------|
 | **analyze** | `/prism:analyze` | General-purpose multi-perspective analysis with MCP-based Socratic verification + ambiguity scoring |
 | **incident** | `/prism:incident` | Incident postmortem with 3-6 perspective agents + Devil's Advocate + optional Tribunal |
-| **prd** | `/prism:prd` | PRD policy conflict analysis against your reference docs via ontology-docs MCP |
+| **prd** | `/prism:prd` | PRD policy conflict analysis against your reference docs |
 | **plan** | `/prism:plan` | Multi-perspective planning with committee debate + consensus enforcement |
 
 ## Prerequisites
@@ -101,7 +101,7 @@ Prism includes a setup skill that automatically downloads the `prism` binary and
 /prism:setup
 ```
 
-This configures the MCP tools (`prism_interview`, `prism_docs_*`) used by the analyze skill's Socratic verification and ontology-scoped analysis.
+This configures the MCP tools (`prism_interview`) used by the analyze skill's Socratic verification.
 
 ### Step 5: Verify installation
 
@@ -135,7 +135,7 @@ After completing all installation steps, your `~/.claude/settings.json` should c
 |-------|---------|---------|--------|
 | **analyze** | `/prism:analyze` | Intake → Seed Analysis → Perspective Generation → Parallel Analysts → Socratic Verification (per analyst) → Synthesis | Analysis report |
 | **incident** | `/prism:incident` | Intake → Seed Analysis → 3-6 Perspective Agents → Devil's Advocate → optional Tribunal → Report | Postmortem report |
-| **prd** | `/prism:prd path/to/prd.md` | Read PRD → 3-6 Policy Analysts (via ontology-docs MCP) → Devil's Advocate → Report | `prd-policy-review-report.md` |
+| **prd** | `/prism:prd path/to/prd.md` | Read PRD → 3-6 Policy Analysts → Devil's Advocate → Report | `prd-policy-review-report.md` |
 | **plan** | `/prism:plan path/to/prd.md` | Input Analysis → 3-6 Analysts → Devil's Advocate → Committee Debate (UX + Eng + Planner) → Consensus Loop → Plan | `plan.md` |
 
 All skills share the same core pattern: **spawn multi-perspective agents → cross-validate → synthesize**. See [How It Works](#how-it-works) for detailed flow diagrams.
@@ -284,10 +284,10 @@ graph TD
     E --> F3[Policy Analyst 3]
     E --> FN[Policy Analyst N]
 
-    F1 -->|ontology-docs MCP| G[All Analysts Complete]
-    F2 -->|ontology-docs MCP| G
-    F3 -->|ontology-docs MCP| G
-    FN -->|ontology-docs MCP| G
+    F1 --> G[All Analysts Complete]
+    F2 --> G
+    F3 --> G
+    FN --> G
 
     G --> H[Devil's Advocate]
     H -->|Merge, Calibrate, Rank| I["Final Report (prd-policy-review-report.md)"]
@@ -372,9 +372,9 @@ Normal Mode: max 2 feedback loops, then forced output. Hell Mode: unlimited loop
 
 Add `"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"` to the `env` section of `~/.claude/settings.json` and restart Claude Code. See [Step 2](#step-2-enable-agent-team-mode).
 
-### "ontology-docs MCP not configured"
+### "Reference docs not configured"
 
-The skill tried to access reference docs but the MCP server isn't set up. See [Step 4](#step-4-configure-ontology-docs-mcp-optional).
+The skill tried to access reference docs but no brownfield repositories are configured. Run `/prism:setup` to configure them.
 
 ### Agents not spawning / TeamCreate fails
 

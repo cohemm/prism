@@ -16,7 +16,6 @@ func TestBuildSpecialistCommand_BasicStructure(t *testing.T) {
 		StateDir:          "/tmp/test-state",
 		SeedSummary:       "Payment processing spans 3 modules with 12 findings.",
 		OntologyScopeText: "Your reference documents:\n- doc: Payment API docs",
-		DocPaths:          []string{"/src/payments", "/src/auth"},
 	}
 
 	perspective := Perspective{
@@ -93,7 +92,6 @@ func TestBuildSpecialistSystemPrompt_FollowsAnalystPromptStructure(t *testing.T)
 		StateDir:          "/tmp/test-state",
 		SeedSummary:       "API rate limiting implemented across 5 services.",
 		OntologyScopeText: "Your reference documents:\n- doc: API Gateway docs",
-		DocPaths:          []string{"/src/gateway"},
 	}
 
 	perspective := Perspective{
@@ -124,7 +122,6 @@ func TestBuildSpecialistSystemPrompt_FollowsAnalystPromptStructure(t *testing.T)
 		{"Context", "CONTEXT:\nAPI rate limiting implemented across 5 services."},
 		{"Reference Documents", "### Reference Documents"},
 		{"Ontology Scope", "Your reference documents:\n- doc: API Gateway docs"},
-		{"Doc Paths", "/src/gateway"},
 		{"Investigation Scope", "Focus on rate limiting configuration, enforcement, and bypass vectors."},
 		{"Tasks", "TASKS:\n1. Map rate limit configurations"},
 		{"Output Format", "OUTPUT:\n## Rate Limit Findings"},
@@ -299,7 +296,6 @@ func TestBuildSpecialistSystemPrompt_NoOntologyScope(t *testing.T) {
 		StateDir:          "/tmp/test",
 		SeedSummary:       "Summary",
 		OntologyScopeText: "", // no ontology scope
-		DocPaths:          nil,
 	}
 
 	perspective := Perspective{
@@ -554,8 +550,8 @@ func TestLoadOntologyScopeText_ValidFile(t *testing.T) {
 				"summary": "API documentation",
 				"status":  "available",
 				"access": map[string]interface{}{
-					"tools":        []string{"prism_docs_list", "prism_docs_read"},
-					"instructions": "Use prism_docs_* tools",
+					"tools":        []string{"Read"},
+					"instructions": "Use the Read tool with offset/limit to read files in the directory.",
 				},
 			},
 			{

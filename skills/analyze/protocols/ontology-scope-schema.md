@@ -22,8 +22,8 @@ If no sources and `{AVAILABILITY_MODE}`=`optional` → warn and set `{ONTOLOGY_S
       "key_topics": ["topic1", "topic2"],
       "status": "available",
       "access": {
-        "tools": ["prism_docs_list", "prism_docs_read", "prism_docs_search"],
-        "instructions": "Use prism_docs_* tools. Pass directory path as argument."
+        "tools": ["Read"],
+        "instructions": "Use the Read tool with offset/limit to read files in the directory."
       }
     },
     {

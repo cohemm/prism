@@ -16,12 +16,7 @@
 
 ## Step 1: Check Document Source Availability
 
-First load the deferred tool: `ToolSearch(query="select:mcp__prism__prism_docs_roots")`. Then call `mcp__prism__prism_docs_roots`.
-
-| Result | optional | required |
-|--------|----------|----------|
-| 1+ paths | `ONTOLOGY_AVAILABLE=true`. Record as `ONTOLOGY_DIRS[]`. | `ONTOLOGY_AVAILABLE=true`. Record as `ONTOLOGY_DIRS[]`. |
-| 0 paths / error | `ONTOLOGY_AVAILABLE=false`. Warn, continue. | **STOP.** |
+Document sources are no longer provided via MCP tools. Set `ONTOLOGY_AVAILABLE=false` and proceed.
 
 → **NOW do Step 2a. Nothing else.**
 

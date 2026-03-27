@@ -16,7 +16,6 @@ func TestBuildSeedAnalystPrompt_BasicStructure(t *testing.T) {
 		"analyze-abc123def456",
 		"",
 		"",
-		nil,
 	)
 
 	// Must contain the topic
@@ -70,7 +69,6 @@ func TestBuildSeedAnalystPrompt_WithSeedHints(t *testing.T) {
 		"analyze-000000000000",
 		"Focus on the authentication module specifically",
 		"",
-		nil,
 	)
 
 	if !strings.Contains(prompt, "Focus on the authentication module specifically") {
@@ -87,7 +85,6 @@ func TestBuildSeedAnalystPrompt_WithoutSeedHints(t *testing.T) {
 		"analyze-000000000000",
 		"",
 		"",
-		nil,
 	)
 
 	if strings.Contains(prompt, "ADDITIONAL GUIDANCE") {
@@ -102,7 +99,6 @@ func TestBuildSeedAnalystPrompt_WithOntologyScope(t *testing.T) {
 		"analyze-000000000000",
 		"",
 		scope,
-		nil,
 	)
 
 	if !strings.Contains(prompt, "Reference Documents") {
@@ -113,39 +109,6 @@ func TestBuildSeedAnalystPrompt_WithOntologyScope(t *testing.T) {
 	}
 }
 
-func TestBuildSeedAnalystPrompt_WithDocPaths(t *testing.T) {
-	docPaths := []string{"/home/user/project/src", "/home/user/project/docs"}
-	prompt := BuildSeedAnalystPrompt(
-		"Test topic",
-		"analyze-000000000000",
-		"",
-		"",
-		docPaths,
-	)
-
-	if !strings.Contains(prompt, "Analysis Target Directories") {
-		t.Error("prompt must include target directories section")
-	}
-	for _, p := range docPaths {
-		if !strings.Contains(prompt, p) {
-			t.Errorf("prompt must include doc path %q", p)
-		}
-	}
-}
-
-func TestBuildSeedAnalystPrompt_WithoutDocPaths(t *testing.T) {
-	prompt := BuildSeedAnalystPrompt(
-		"Test topic",
-		"analyze-000000000000",
-		"",
-		"",
-		nil,
-	)
-
-	if strings.Contains(prompt, "Analysis Target Directories") {
-		t.Error("prompt must NOT include target directories when no doc paths")
-	}
-}
 
 func TestBuildPerspectiveGeneratorPrompt_BasicStructure(t *testing.T) {
 	seedJSON := `{"topic":"test","summary":"test summary","findings":[],"key_areas":[]}`
@@ -370,13 +333,6 @@ func TestLoadStage1Config_MissingFile(t *testing.T) {
 	}
 }
 
-func TestLoadOntologyDocPaths_MissingFile(t *testing.T) {
-	// This should return nil gracefully when file doesn't exist
-	// (actual file at ~/.prism/ontology-docs.json may or may not exist)
-	paths := LoadOntologyDocPaths()
-	// Just verify it doesn't panic — the result depends on the actual system state
-	_ = paths
-}
 
 func TestStringFromMap(t *testing.T) {
 	m := map[string]interface{}{
@@ -400,7 +356,7 @@ func TestStringFromMap(t *testing.T) {
 }
 
 func TestBuildSeedAnalystPrompt_OutputInstructsJSONFormat(t *testing.T) {
-	prompt := BuildSeedAnalystPrompt("test", "id", "", "", nil)
+	prompt := BuildSeedAnalystPrompt("test", "id", "", "")
 
 	// Must instruct about key JSON fields for structured output
 	expectedFields := []string{
