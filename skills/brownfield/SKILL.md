@@ -51,7 +51,18 @@ This may take a moment...
 
 The scan response `text` already contains a pre-formatted numbered list with `[default]` markers. **Do NOT make any additional MCP calls to list or query repos.**
 
-**Display the repos in a compact 2-column grid** so the user can scan all repos quickly. Format the scan response `text` as two side-by-side columns. Include `*` markers for defaults exactly as they appear in the response.
+**Display the repos in a plain-text 2-column grid** (NOT a markdown table). Use a code block so columns align. Example:
+
+```
+Scan complete. 8 repositories registered.
+
+ 1. repo-alpha                   5. repo-epsilon
+ 2. repo-bravo *                 6. repo-foxtrot
+ 3. repo-charlie                 7. repo-golf *
+ 4. repo-delta                   8. repo-hotel
+```
+
+Include `*` markers for defaults exactly as they appear in the scan response.
 
 **If no repos found**, show:
 ```
