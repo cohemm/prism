@@ -16,7 +16,6 @@ func TestBuildInterviewCommand_BasicFields(t *testing.T) {
 		StateDir:          "/tmp/test-state",
 		SeedSummary:       "Worker pool has potential goroutine leak under high load.",
 		OntologyScopeText: "- doc: worker pool implementation",
-		DocPaths:          []string{"/project/pkg/worker"},
 	}
 
 	perspective := Perspective{
@@ -175,7 +174,6 @@ func TestBuildInterviewCommand_SystemPromptContainsContext(t *testing.T) {
 		StateDir:          "/tmp/test",
 		SeedSummary:       "API has inconsistent naming conventions.",
 		OntologyScopeText: "- doc: API specification v2",
-		DocPaths:          []string{"/docs/api", "/src/api"},
 	}
 
 	perspective := Perspective{
@@ -193,7 +191,7 @@ func TestBuildInterviewCommand_SystemPromptContainsContext(t *testing.T) {
 
 	cmd := BuildInterviewCommand(ictx, perspective, findings)
 
-	// Must contain topic, seed summary, ontology scope, doc paths
+	// Must contain topic, seed summary, ontology scope
 	if !strings.Contains(cmd.SystemPrompt, "analyze API design") {
 		t.Error("SystemPrompt should contain the topic")
 	}
@@ -202,9 +200,6 @@ func TestBuildInterviewCommand_SystemPromptContainsContext(t *testing.T) {
 	}
 	if !strings.Contains(cmd.SystemPrompt, "API specification v2") {
 		t.Error("SystemPrompt should contain ontology scope text")
-	}
-	if !strings.Contains(cmd.SystemPrompt, "/docs/api") {
-		t.Error("SystemPrompt should contain doc paths")
 	}
 	// Key questions should appear
 	if !strings.Contains(cmd.SystemPrompt, "Are naming conventions consistent?") {
@@ -449,7 +444,6 @@ func TestBuildInterviewCommand_NoOntologyScope(t *testing.T) {
 		Topic: "test", ContextID: "analyze-t", Model: "claude-sonnet-4-6",
 		StateDir: "/tmp/t", SeedSummary: "s",
 		OntologyScopeText: "", // no ontology scope
-		DocPaths:          nil,
 	}
 	perspective := Perspective{
 		ID: "t", Name: "T", Scope: "t", KeyQuestions: []string{"q1?", "q2?"},
@@ -468,6 +462,6 @@ func TestBuildInterviewCommand_NoOntologyScope(t *testing.T) {
 	}
 	// Should NOT contain "Analysis Target Directories" section
 	if strings.Contains(cmd.SystemPrompt, "Analysis Target Directories") {
-		t.Error("SystemPrompt should not contain target directories section when DocPaths is nil")
+		t.Error("SystemPrompt should not contain target directories section when no doc paths")
 	}
 }

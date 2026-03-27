@@ -89,7 +89,7 @@ func SeedAnalysisSchema() string {
 //   - seedHints: optional additional guidance for the seed analyst
 //   - ontologyScope: JSON string of ontology-scope.json (pre-resolved), or empty
 //   - docPaths: list of ontology document root paths for the analyst to search
-func BuildSeedAnalystPrompt(topic, contextID, seedHints, ontologyScope string, docPaths []string) string {
+func BuildSeedAnalystPrompt(topic, contextID, seedHints, ontologyScope string) string {
 	var sb strings.Builder
 
 	sb.WriteString(`You are the SEED ANALYST performing breadth-first research for a multi-perspective analysis.
@@ -107,18 +107,6 @@ TOPIC:
 		sb.WriteString("\nADDITIONAL GUIDANCE:\n")
 		sb.WriteString(seedHints)
 		sb.WriteString("\n")
-	}
-
-	// Provide document root paths for targeted search
-	if len(docPaths) > 0 {
-		sb.WriteString("\n## Analysis Target Directories\n\n")
-		sb.WriteString("Focus your investigation on these registered document/code directories:\n\n")
-		for _, p := range docPaths {
-			sb.WriteString("- ")
-			sb.WriteString(p)
-			sb.WriteString("\n")
-		}
-		sb.WriteString("\nSearch within these directories first. You may also search related areas outside these directories if the evidence trail leads there.\n")
 	}
 
 	if ontologyScope != "" {
@@ -323,33 +311,6 @@ Generate a JSON object with this structure:
 	return sb.String()
 }
 
-// --- Ontology Document Path Resolution ---
-
-// ontologyDocsConfig represents the ~/.prism/ontology-docs.json structure.
-type ontologyDocsConfig struct {
-	Directories []string `json:"directories"`
-}
-
-// LoadOntologyDocPaths reads ~/.prism/ontology-docs.json and returns the list of
-// registered document root directories. Returns an empty slice if the file
-// doesn't exist or can't be parsed.
-func LoadOntologyDocPaths() []string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil
-	}
-	configPath := filepath.Join(home, ".prism", "ontology-docs.json")
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return nil
-	}
-	var config ontologyDocsConfig
-	if err := json.Unmarshal(data, &config); err != nil {
-		return nil
-	}
-	return config.Directories
-}
-
 // --- Stage 1 Config Loader ---
 
 // Stage1Config holds the parameters needed to build Stage 1 prompts,
@@ -361,7 +322,6 @@ type Stage1Config struct {
 	StateDir      string
 	SeedHints     string
 	OntologyScope string
-	DocPaths      []string
 }
 
 // LoadStage1Config reads config.json from the task's state directory
@@ -388,9 +348,6 @@ func LoadStage1Config(task *taskpkg.AnalysisTask) (Stage1Config, error) {
 
 	// Load ontology scope if present
 	sc.OntologyScope = stringFromMap(config, "ontology_scope")
-
-	// Resolve ontology doc paths from ~/.prism/ontology-docs.json
-	sc.DocPaths = LoadOntologyDocPaths()
 
 	return sc, nil
 }
@@ -434,8 +391,8 @@ func BuildOntologyScopeFromPaths(paths []string) (string, error) {
 			Summary: "Brownfield default repository",
 			Status:  "available",
 			Access: accessInfo{
-				Tools:        []string{"prism_docs_list", "prism_docs_read", "prism_docs_search"},
-				Instructions: "Use prism_docs_* tools. Pass directory path as argument.",
+				Tools:        []string{"Read"},
+				Instructions: "Use the Read tool with offset/limit to read files in the directory.",
 			},
 		}
 	}
@@ -508,16 +465,12 @@ func PerspectivesPath(stateDir string) string {
 func RunSeedAnalysis(task *taskpkg.AnalysisTask, cfg AnalysisConfig) error {
 	stateDir := task.GetStateDir()
 
-	// Resolve ontology doc paths for targeted search
-	docPaths := LoadOntologyDocPaths()
-
 	// Build the seed analyst system prompt
 	systemPrompt := BuildSeedAnalystPrompt(
 		cfg.Topic,
 		cfg.ContextID,
 		cfg.SeedHints,
 		cfg.OntologyScope,
-		docPaths,
 	)
 
 	// User prompt is a concise task instruction
@@ -703,15 +656,6 @@ func runSupplementaryResearch(task *taskpkg.AnalysisTask, cfg AnalysisConfig, ga
 	}
 	sb.WriteString("\nInvestigate ONLY these specific gaps. Use tools (Grep, Read, Glob, Bash) to find concrete evidence.\n")
 	sb.WriteString("Output your additional findings as structured JSON following the same schema.\n")
-
-	// Include ontology doc paths for targeted search
-	docPaths := LoadOntologyDocPaths()
-	if len(docPaths) > 0 {
-		sb.WriteString("\n## Analysis Target Directories\n\n")
-		for _, p := range docPaths {
-			sb.WriteString(fmt.Sprintf("- %s\n", p))
-		}
-	}
 
 	// Run focused research subprocess (5-minute timeout, 8 max turns)
 	ctx, cancel := context.WithTimeout(task.Ctx, 5*time.Minute)

@@ -27,7 +27,7 @@ disallowedTools: Write, Edit
     - Call `ToolSearch(query="select:<tool_name>")` to load deferred MCP tools before calling them.
     - Never fabricate findings. If a search returns nothing relevant, report that — absence of evidence is itself a finding.
     - Cap total exploration to 5 rounds of tool calls. Report what you found, not what you wish you'd found.
-    - Prefer search tools over full reads. For docs use `prism_docs_search` before `prism_docs_read`. For large files use `offset`/`limit`.
+    - Prefer search tools over full reads. For large files use `offset`/`limit`.
   </Constraints>
 
   <Investigation_Protocol>
@@ -70,7 +70,6 @@ disallowedTools: Write, Edit
 
   <Tool_Usage>
     Common tool patterns:
-    - `prism_docs_search`, `prism_docs_list`, `prism_docs_read` — ontology document sources
     - MCP query tools — follow access instructions per source. `ToolSearch(query="select:<tool_name>")` to load before first use
     - `Read` with offset/limit — file sources
     - `WebFetch` — web sources (check cached summaries first)

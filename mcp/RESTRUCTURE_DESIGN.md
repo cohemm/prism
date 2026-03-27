@@ -32,7 +32,7 @@ mcp/
 │   │   │
 │   │   ├── scope.go                     #   Stage 1: runSeedAnalysis, BuildSeedAnalystPrompt,
 │   │   │                                #            BuildPerspectiveGeneratorPrompt,
-│   │   │                                #            LoadOntologyDocPaths, schema 상수들
+│   │   │                                #            schema 상수들
 │   │   ├── specialist.go                #   Stage 2: BuildAllSpecialistCommands,
 │   │   │                                #            BuildSpecialistCommand, SpecialistCommand,
 │   │   │                                #            LoadSpecialistContext, SpecialistContext
@@ -61,8 +61,7 @@ mcp/
 │       ├── interview.go                 #   handleInterview, handleScore,
 │       │                                #   InterviewSession, QA, InterviewResponse, scoreSession
 │       ├── review.go                    #   handleDAReview, DAFinding, DAReviewResult
-│       └── docs.go                      #   initFilesystem, handleListRoots, handleListDir,
-│                                        #   handleReadFile, handleSearchFiles, allowedDirs
+│       └── (docs.go removed — replaced by brownfield SQLite)
 ```
 
 ### 테스트 파일 배치 (관례: 동일 디렉토리)
@@ -117,8 +116,6 @@ internal/
 | 16 | `interview.go` | 332 | `internal/handler/interview.go` | `handler` | handleInterview (MCP 도구 핸들러) |
 | 17 | `scorer.go` | 76 | `internal/handler/interview.go` (병합) | `handler` | scoreSession — interview와 합침 |
 | 18 | `da_review.go` | 394 | `internal/handler/review.go` | `handler` | handleDAReview, DAFinding |
-| 19 | `filesystem.go` | 204 | `internal/handler/docs.go` | `handler` | initFilesystem, prism_docs_* 핸들러 |
-
 **소스 파일 수 변화**: 19개 flat → 14개 파일 across 5 패키지 (병합으로 파일 수 감소)
 
 ---
@@ -287,7 +284,6 @@ handleAnalyze        → HandleAnalyze          (handler)
 handleInterview      → HandleInterview        (handler)
 handleDAReview       → HandleDAReview         (handler)
 handleScore          → HandleScore            (handler)
-initFilesystem       → InitFilesystem         (handler)
 scoreSession         → ScoreSession           (handler, 또는 handler 내부 유지 시 불필요)
 ```
 

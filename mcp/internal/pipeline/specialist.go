@@ -74,9 +74,6 @@ type SpecialistContext struct {
 	// for injection into the Reference Documents section.
 	// Empty string if no ontology scope is configured.
 	OntologyScopeText string
-
-	// DocPaths are the registered ontology document directories.
-	DocPaths []string
 }
 
 // specialistFindingsJSONSchema enforces structured output from specialist subprocesses.
@@ -201,9 +198,6 @@ func LoadSpecialistContext(cfg AnalysisConfig) (SpecialistContext, error) {
 
 	// Build ontology scope text block from ontology-scope.json if it exists
 	ctx.OntologyScopeText = LoadOntologyScopeText(cfg.StateDir)
-
-	// Load registered doc paths
-	ctx.DocPaths = LoadOntologyDocPaths()
 
 	return ctx, nil
 }
@@ -390,18 +384,6 @@ func buildSpecialistSystemPrompt(sctx SpecialistContext, perspective Perspective
 		sb.WriteString("N/A — ontology scope file not found. Analyze using available evidence only.")
 	}
 	sb.WriteString("\n\n")
-
-	// Add doc paths for targeted search
-	if len(sctx.DocPaths) > 0 {
-		sb.WriteString("## Analysis Target Directories\n\n")
-		sb.WriteString("Focus your investigation on these registered document/code directories:\n\n")
-		for _, p := range sctx.DocPaths {
-			sb.WriteString("- ")
-			sb.WriteString(p)
-			sb.WriteString("\n")
-		}
-		sb.WriteString("\nSearch within these directories first. You may also search related areas outside these directories if the evidence trail leads there.\n\n")
-	}
 
 	// --- Section 4: Investigation Scope ---
 	sb.WriteString(perspective.Prompt.InvestigationScope)
