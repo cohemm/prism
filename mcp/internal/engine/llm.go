@@ -49,7 +49,6 @@ func QueryLLM(ctx context.Context, prompt string) (string, error) {
 	return QuerySync(ctx, prompt, ClaudeOptions{
 		Env:          runtimeEnvOverrides(""),
 		AllowedTools: []string{},
-
 	})
 }
 
@@ -59,7 +58,6 @@ func QueryLLMWithSystemPrompt(ctx context.Context, systemPrompt, userPrompt stri
 		SystemPrompt: systemPrompt,
 		Env:          runtimeEnvOverrides(""),
 		AllowedTools: []string{},
-
 	})
 }
 
@@ -70,7 +68,6 @@ func QueryLLMScoped(ctx context.Context, stateDir, model, prompt string) (string
 		Cwd:          stateDir,
 		Env:          runtimeEnvOverrides(""),
 		AllowedTools: []string{},
-
 	})
 }
 
@@ -87,7 +84,6 @@ func QueryLLMScopedWithSystemPromptAdaptor(ctx context.Context, stateDir, model,
 		Cwd:          stateDir,
 		Env:          runtimeEnvOverrides(adaptor),
 		AllowedTools: []string{},
-
 	})
 }
 
@@ -104,7 +100,6 @@ func QueryLLMScopedWithSchemaAdaptor(ctx context.Context, stateDir, model, adapt
 		Cwd:          stateDir,
 		Env:          runtimeEnvOverrides(adaptor),
 		AllowedTools: []string{},
-
 	})
 }
 
