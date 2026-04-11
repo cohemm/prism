@@ -7,8 +7,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
+
+var codexArtifactsMu sync.Mutex
 
 func TestCodexRuleRegistersInitialPSMCommands(t *testing.T) {
 	t.Parallel()
@@ -408,8 +411,8 @@ func TestInstalledPSMWrapperDispatchesClosedMilestoneCommandsViaSharedRunner(t *
 			expectedText: []string{
 				"psm brownfield defaults",
 				"Registered Prism Codex skill:\nprism-brownfield",
-				"Preserve the shared-skill subcommand behavior exactly: `scan` means scan only, `defaults` means show current defaults, and `set <indices>` means update defaults directly with the provided comma-separated indices.",
-				"No GitHub repositories found in your home directory.",
+				"Treat that shared skill as the only workflow definition; do not duplicate its phase logic, status text, or stop conditions in the Codex command layer.",
+				"Invalid brownfield selections or MCP failures must fail the Codex run instead of being converted into a success summary.",
 			},
 		},
 		{
@@ -598,7 +601,7 @@ func TestInstalledPSMBrownfieldResolvesRepoRootWithoutEnvOverride(t *testing.T) 
 		unrelatedDir,
 		"Treat the following as an exact Prism command invocation",
 		filepath.Join(install.repoRoot, "skills", "brownfield", "SKILL.md"),
-		"Preserve the default no-argument flow exactly: scan first, render the scan result, then prompt for default selection.",
+		"Treat that shared skill as the only workflow definition; do not duplicate its phase logic, status text, or stop conditions in the Codex command layer.",
 		"Invalid brownfield selections or MCP failures must fail the Codex run instead of being converted into a success summary.",
 	} {
 		if !strings.Contains(stdinOutput, needle) {
@@ -640,9 +643,7 @@ func TestInstalledPSMBrownfieldPreservesSharedParityAcrossSubcommands(t *testing
 			promptChecks: []string{
 				filepath.Join(install.repoRoot, "skills", "brownfield", "SKILL.md"),
 				"Treat the invocation as one of these exact shared-skill forms: `psm brownfield`, `psm brownfield scan`, `psm brownfield defaults`, or `psm brownfield set <indices>`.",
-				"Preserve the default no-argument flow exactly: scan first, render the scan result, then prompt for default selection.",
-				"No GitHub repositories found in your home directory.",
-				"clearing defaults should surface the shared greenfield-mode confirmation",
+				"Treat that shared skill as the only workflow definition; do not duplicate its phase logic, status text, or stop conditions in the Codex command layer.",
 			},
 		},
 		{
@@ -651,7 +652,7 @@ func TestInstalledPSMBrownfieldPreservesSharedParityAcrossSubcommands(t *testing
 			promptLine: "psm brownfield scan",
 			promptChecks: []string{
 				filepath.Join(install.repoRoot, "skills", "brownfield", "SKILL.md"),
-				"Preserve the shared-skill subcommand behavior exactly: `scan` means scan only, `defaults` means show current defaults, and `set <indices>` means update defaults directly with the provided comma-separated indices.",
+				"Treat that shared skill as the only workflow definition; do not duplicate its phase logic, status text, or stop conditions in the Codex command layer.",
 			},
 		},
 		{
@@ -660,8 +661,8 @@ func TestInstalledPSMBrownfieldPreservesSharedParityAcrossSubcommands(t *testing
 			promptLine: "psm brownfield defaults",
 			promptChecks: []string{
 				filepath.Join(install.repoRoot, "skills", "brownfield", "SKILL.md"),
-				"Preserve the shared-skill subcommand behavior exactly: `scan` means scan only, `defaults` means show current defaults, and `set <indices>` means update defaults directly with the provided comma-separated indices.",
-				"Preserve the shared skill's user-facing status text and stop conditions: empty scans should surface `No GitHub repositories found in your home directory.`, clearing defaults should surface the shared greenfield-mode confirmation, and successful default updates should confirm the selected repository names.",
+				"Treat that shared skill as the only workflow definition; do not duplicate its phase logic, status text, or stop conditions in the Codex command layer.",
+				"Invalid brownfield selections or MCP failures must fail the Codex run instead of being converted into a success summary.",
 			},
 		},
 		{
@@ -670,8 +671,8 @@ func TestInstalledPSMBrownfieldPreservesSharedParityAcrossSubcommands(t *testing
 			promptLine: "psm brownfield set 6\\,18\\,19",
 			promptChecks: []string{
 				filepath.Join(install.repoRoot, "skills", "brownfield", "SKILL.md"),
-				"Preserve the shared-skill subcommand behavior exactly: `scan` means scan only, `defaults` means show current defaults, and `set <indices>` means update defaults directly with the provided comma-separated indices.",
-				"successful default updates should confirm the selected repository names.",
+				"Treat that shared skill as the only workflow definition; do not duplicate its phase logic, status text, or stop conditions in the Codex command layer.",
+				"Invalid brownfield selections or MCP failures must fail the Codex run instead of being converted into a success summary.",
 			},
 		},
 	}
@@ -727,8 +728,8 @@ func TestInstalledPSMBrownfieldDefaultsCommandUsesRepoSkillAsCanonicalSource(t *
 		"The canonical shared Prism skill for this command is:\n" + filepath.Join(install.repoRoot, "skills", "brownfield", "SKILL.md"),
 		"Read and follow that shared Prism skill from the resolved Prism asset root. Treat any installed ~/.codex skill copy as a managed mirror, not as the authored source.",
 		"Treat installed `~/.codex/skills/prism-brownfield` entries as setup-refreshed mirrors of the shared repo skill, not as the authored workflow source.",
-		"Preserve the shared-skill subcommand behavior exactly: `scan` means scan only, `defaults` means show current defaults, and `set <indices>` means update defaults directly with the provided comma-separated indices.",
-		"Preserve the shared skill's user-facing status text and stop conditions: empty scans should surface `No GitHub repositories found in your home directory.`, clearing defaults should surface the shared greenfield-mode confirmation, and successful default updates should confirm the selected repository names.",
+		"Treat that shared skill as the only workflow definition; do not duplicate its phase logic, status text, or stop conditions in the Codex command layer.",
+		"Invalid brownfield selections or MCP failures must fail the Codex run instead of being converted into a success summary.",
 	} {
 		if !strings.Contains(stdinOutput, needle) {
 			t.Fatalf("expected %q in brownfield defaults prompt\n%s", needle, stdinOutput)
@@ -771,8 +772,7 @@ func TestInstalledPSMSetupPreservesSharedParityAcrossSubcommands(t *testing.T) {
 			promptLine: "psm setup",
 			promptChecks: []string{
 				filepath.Join(install.repoRoot, "skills", "setup", "SKILL.md"),
-				"Preserve the default no-argument flow exactly: scan first, render the scan result, then prompt for default selection.",
-				"Preserve the shared setup flow exactly, including the brownfield scan, default-selection prompt, MCP tool usage, and final confirmation messaging.",
+				"Treat that shared skill as the only workflow definition; do not duplicate its phase logic, brownfield flow, status text, or stop conditions in the Codex command layer.",
 			},
 		},
 		{
@@ -781,7 +781,7 @@ func TestInstalledPSMSetupPreservesSharedParityAcrossSubcommands(t *testing.T) {
 			promptLine: "psm setup scan",
 			promptChecks: []string{
 				filepath.Join(install.repoRoot, "skills", "setup", "SKILL.md"),
-				"Preserve the shared-skill subcommand behavior exactly: `scan` means scan only, `defaults` means show current defaults, and `set <indices>` means update defaults directly with the provided comma-separated indices.",
+				"Treat that shared skill as the only workflow definition; do not duplicate its phase logic, brownfield flow, status text, or stop conditions in the Codex command layer.",
 			},
 		},
 		{
@@ -790,8 +790,8 @@ func TestInstalledPSMSetupPreservesSharedParityAcrossSubcommands(t *testing.T) {
 			promptLine: "psm setup defaults",
 			promptChecks: []string{
 				filepath.Join(install.repoRoot, "skills", "setup", "SKILL.md"),
-				"Preserve the shared-skill subcommand behavior exactly: `scan` means scan only, `defaults` means show current defaults, and `set <indices>` means update defaults directly with the provided comma-separated indices.",
-				"successful default updates should confirm the selected repository names.",
+				"Treat that shared skill as the only workflow definition; do not duplicate its phase logic, brownfield flow, status text, or stop conditions in the Codex command layer.",
+				"Invalid brownfield selections or MCP failures must fail the Codex run instead of being converted into a success summary.",
 			},
 		},
 		{
@@ -800,8 +800,8 @@ func TestInstalledPSMSetupPreservesSharedParityAcrossSubcommands(t *testing.T) {
 			promptLine: "psm setup set 6\\,18\\,19",
 			promptChecks: []string{
 				filepath.Join(install.repoRoot, "skills", "setup", "SKILL.md"),
-				"Preserve the shared-skill subcommand behavior exactly: `scan` means scan only, `defaults` means show current defaults, and `set <indices>` means update defaults directly with the provided comma-separated indices.",
-				"successful default updates should confirm the selected repository names.",
+				"Treat that shared skill as the only workflow definition; do not duplicate its phase logic, brownfield flow, status text, or stop conditions in the Codex command layer.",
+				"Invalid brownfield selections or MCP failures must fail the Codex run instead of being converted into a success summary.",
 			},
 		},
 	}
@@ -1879,8 +1879,8 @@ func TestInstalledPSMSetupIsGloballyExecutableViaPATHFromUnrelatedDirectory(t *t
 		unrelatedDir,
 		filepath.Join(install.repoRoot, "skills", "setup", "SKILL.md"),
 		"Resolve the shared Prism setup skill deterministically from `",
-		"Preserve the shared-skill subcommand behavior exactly: `scan` means scan only, `defaults` means show current defaults, and `set <indices>` means update defaults directly with the provided comma-separated indices.",
-		"Preserve the shared skill's user-facing status text and stop conditions: empty scans should surface `No GitHub repositories found in your home directory.`, clearing defaults should surface the shared greenfield-mode confirmation, and successful default updates should confirm the selected repository names.",
+		"Treat that shared skill as the only workflow definition; do not duplicate its phase logic, brownfield flow, status text, or stop conditions in the Codex command layer.",
+		"Invalid brownfield selections or MCP failures must fail the Codex run instead of being converted into a success summary.",
 	} {
 		if !strings.Contains(stdinOutput, needle) {
 			t.Fatalf("expected %q in codex prompt\n%s", needle, stdinOutput)
@@ -2192,6 +2192,9 @@ func canonicalPath(t *testing.T, path string) string {
 func renderPSMEntrypoint(t *testing.T, repoRoot, psmSource, renderFunc, commandName string) string {
 	t.Helper()
 
+	codexArtifactsMu.Lock()
+	defer codexArtifactsMu.Unlock()
+
 	cmd := exec.Command(
 		"bash",
 		"-lc",
@@ -2233,6 +2236,9 @@ type codexInstallPaths struct {
 
 func installCodexArtifacts(t *testing.T) codexInstallPaths {
 	t.Helper()
+
+	codexArtifactsMu.Lock()
+	defer codexArtifactsMu.Unlock()
 
 	homeDir, err := os.MkdirTemp("/tmp", "prism-codex-install-*")
 	if err != nil {
@@ -2356,8 +2362,8 @@ func representativePSMInvocations() map[string]psmRepresentativeInvocation {
 			promptNeedles: []string{
 				"{REPO_ROOT}/skills/brownfield/SKILL.md",
 				"Treat installed `~/.codex/skills/prism-brownfield` entries as setup-refreshed mirrors of the shared repo skill, not as the authored workflow source.",
-				"Preserve the shared-skill subcommand behavior exactly: `scan` means scan only, `defaults` means show current defaults, and `set <indices>` means update defaults directly with the provided comma-separated indices.",
-				"Preserve the shared skill's user-facing status text and stop conditions: empty scans should surface `No GitHub repositories found in your home directory.`, clearing defaults should surface the shared greenfield-mode confirmation, and successful default updates should confirm the selected repository names.",
+				"Treat that shared skill as the only workflow definition; do not duplicate its phase logic, status text, or stop conditions in the Codex command layer.",
+				"Invalid brownfield selections or MCP failures must fail the Codex run instead of being converted into a success summary.",
 			},
 		},
 		"incident": {
@@ -2379,9 +2385,33 @@ func representativePSMInvocations() map[string]psmRepresentativeInvocation {
 			promptNeedles: []string{
 				"{REPO_ROOT}/skills/setup/SKILL.md",
 				"Resolve the shared Prism setup skill deterministically from `",
-				"Preserve the shared-skill subcommand behavior exactly: `scan` means scan only, `defaults` means show current defaults, and `set <indices>` means update defaults directly with the provided comma-separated indices.",
+				"Treat that shared skill as the only workflow definition; do not duplicate its phase logic, brownfield flow, status text, or stop conditions in the Codex command layer.",
 			},
 		},
+	}
+}
+
+func TestGeneratedCodexSkillVersionMatchesSharedSkillFrontmatter(t *testing.T) {
+	tests := []struct {
+		command string
+		version string
+	}{
+		{command: "analyze", version: "7.2.0"},
+		{command: "brownfield", version: "2.0.0"},
+		{command: "incident", version: "2.1.0"},
+		{command: "prd", version: "1.0.0"},
+		{command: "setup", version: "2.0.0"},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.command, func(t *testing.T) {
+			content := renderGeneratedPSMSkill(t, tt.command)
+			needle := "version: " + tt.version
+			if !strings.Contains(content, needle) {
+				t.Fatalf("expected %q in generated Codex skill for %s", needle, tt.command)
+			}
+		})
 	}
 }
 

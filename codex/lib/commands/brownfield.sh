@@ -34,7 +34,7 @@ prism_psm_brownfield_command_entrypoint() {
 Use `PRISM_REPO_PATH` as the source of truth for shared Prism assets when it points to a Prism repo containing `skills/brownfield/SKILL.md`.
 If that path is unavailable, fall back to `Glob(pattern="**/skills/brownfield/SKILL.md")` to locate the shared Prism brownfield skill.
 Treat `psm brownfield`, `psm brownfield scan`, `psm brownfield defaults`, and `psm brownfield set <indices>` as exact command forms routed through that shared skill.
-Preserve the default no-argument flow exactly: scan first, render the scan result, then prompt for default selection.
+Treat the shared brownfield skill as the only workflow definition.
 Read and follow that shared Prism skill from the resolved Prism asset root.
 EOF
 }
@@ -48,17 +48,15 @@ EOF
 prism_psm_brownfield_command_contract() {
   printf '%s\n' \
     "" \
-    "For psm brownfield, preserve full shared-skill execution parity while resolving the shared brownfield workflow independently from the launch directory:" \
+    "For psm brownfield, resolve the shared brownfield workflow independently from the launch directory without redefining it in this Codex command layer:" \
     '- Treat the invocation as one of these exact shared-skill forms: `psm brownfield`, `psm brownfield scan`, `psm brownfield defaults`, or `psm brownfield set <indices>`.' \
     "- Use the shared Prism brownfield skill at \`${PRISM_REPO_PATH}/skills/brownfield/SKILL.md\` as the workflow source of truth." \
     "- Resolve the shared Prism brownfield skill deterministically from \`${PRISM_REPO_PATH}\`, the installed \`repo-root\` pointer, or the shared \`psm\` library location before considering any globbed matches." \
     "- If Codex does need to glob for \`skills/brownfield/SKILL.md\`, prefer the Prism-owned path under \`${PRISM_REPO_PATH}\` over matches from the user's target repository or working directory." \
     "- Treat installed \`~/.codex/skills/prism-brownfield\` entries as setup-refreshed mirrors of the shared repo skill, not as the authored workflow source." \
-    "- Preserve the default no-argument flow exactly: scan first, render the scan result, then prompt for default selection." \
-    '- Preserve the shared-skill subcommand behavior exactly: `scan` means scan only, `defaults` means show current defaults, and `set <indices>` means update defaults directly with the provided comma-separated indices.' \
-    "- Preserve the shared skill's user-facing status text and stop conditions: empty scans should surface \`No GitHub repositories found in your home directory.\`, clearing defaults should surface the shared greenfield-mode confirmation, and successful default updates should confirm the selected repository names." \
-    "- Invalid brownfield selections or MCP failures must fail the Codex run instead of being converted into a success summary." \
+    "- Treat that shared skill as the only workflow definition; do not duplicate its phase logic, status text, or stop conditions in the Codex command layer." \
     "- Reuse Prism's bundled MCP tool routing and environment assumptions from the shared skill. Keep the user's original working directory as project context, but resolve shared Prism workflow assets from \`${PRISM_REPO_PATH}\`." \
+    "- Invalid brownfield selections or MCP failures must fail the Codex run instead of being converted into a success summary." \
     "- Do not replace the workflow with ad hoc shell logic."
 }
 

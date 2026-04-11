@@ -375,7 +375,7 @@ assert_file_contains "${captured_prompt}" "${REPO_ROOT}/skills/setup/SKILL.md"
 assert_file_contains "${captured_prompt}" "managed mirror copies under ~/.codex/skills"
 assert_file_contains "${captured_prompt}" "Treat any installed ~/.codex skill copy as a managed mirror, not as the authored source."
 assert_file_contains "${captured_prompt}" "Resolve the shared Prism setup skill deterministically from"
-assert_file_contains "${captured_prompt}" "Preserve the shared setup flow exactly, including the brownfield scan, default-selection prompt, MCP tool usage, and final confirmation messaging."
+assert_file_contains "${captured_prompt}" "Treat that shared skill as the only workflow definition; do not duplicate its phase logic, brownfield flow, status text, or stop conditions in the Codex command layer."
 assert_file_contains "${captured_prompt}" "Read and follow that shared Prism skill from the resolved Prism asset root."
 
 (
@@ -394,7 +394,7 @@ assert_file_contains "${captured_prompt}" "Read and follow that shared Prism ski
 )
 
 assert_file_contains "${captured_prompt}" "psm setup defaults"
-assert_file_contains "${captured_prompt}" "Preserve the shared-skill subcommand behavior exactly: \`scan\` means scan only, \`defaults\` means show current defaults, and \`set <indices>\` means update defaults directly with the provided comma-separated indices."
+assert_file_contains "${captured_prompt}" "Treat that shared skill as the only workflow definition; do not duplicate its phase logic, brownfield flow, status text, or stop conditions in the Codex command layer."
 
 (
   cd "${invoke_dir}"
@@ -402,7 +402,7 @@ assert_file_contains "${captured_prompt}" "Preserve the shared-skill subcommand 
 )
 
 assert_file_contains "${captured_prompt}" "psm setup set 6\\,18\\,19"
-assert_file_contains "${captured_prompt}" "successful default updates should confirm the selected repository names."
+assert_file_contains "${captured_prompt}" "Invalid brownfield selections or MCP failures must fail the Codex run instead of being converted into a success summary."
 
 (
   cd "${invoke_dir}"
@@ -412,8 +412,7 @@ assert_file_contains "${captured_prompt}" "successful default updates should con
 assert_file_contains "${captured_prompt}" "psm brownfield"
 assert_file_contains "${captured_prompt}" "Resolve the shared Prism brownfield skill deterministically from"
 assert_file_contains "${captured_prompt}" "Treat installed \`~/.codex/skills/prism-brownfield\` entries as setup-refreshed mirrors of the shared repo skill"
-assert_file_contains "${captured_prompt}" "Preserve the default no-argument flow exactly: scan first, render the scan result, then prompt for default selection."
-assert_file_contains "${captured_prompt}" "clearing defaults should surface the shared greenfield-mode confirmation"
+assert_file_contains "${captured_prompt}" "Treat that shared skill as the only workflow definition; do not duplicate its phase logic, status text, or stop conditions in the Codex command layer."
 
 (
   cd "${invoke_dir}"
@@ -421,7 +420,7 @@ assert_file_contains "${captured_prompt}" "clearing defaults should surface the 
 )
 
 assert_file_contains "${captured_prompt}" "psm brownfield scan"
-assert_file_contains "${captured_prompt}" "Preserve the shared-skill subcommand behavior exactly: \`scan\` means scan only, \`defaults\` means show current defaults, and \`set <indices>\` means update defaults directly with the provided comma-separated indices."
+assert_file_contains "${captured_prompt}" "Treat that shared skill as the only workflow definition; do not duplicate its phase logic, status text, or stop conditions in the Codex command layer."
 
 (
   cd "${invoke_dir}"
@@ -429,7 +428,7 @@ assert_file_contains "${captured_prompt}" "Preserve the shared-skill subcommand 
 )
 
 assert_file_contains "${captured_prompt}" "psm brownfield set 6\\,18\\,19"
-assert_file_contains "${captured_prompt}" "successful default updates should confirm the selected repository names."
+assert_file_contains "${captured_prompt}" "Invalid brownfield selections or MCP failures must fail the Codex run instead of being converted into a success summary."
 
 (
   cd "${invoke_dir}"
