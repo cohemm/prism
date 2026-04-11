@@ -77,3 +77,53 @@ func TestSaveAndLoadTaskSnapshot(t *testing.T) {
 		t.Fatalf("expected scope detail to round-trip, got %q", loaded.Stages[0].Detail)
 	}
 }
+
+func TestSaveAnalysisConfigResetsLifecycleForDeterministicRerun(t *testing.T) {
+	baseDir := t.TempDir()
+	record := AnalysisConfigRecord{
+		TaskID:    "analyze-rerun",
+		Topic:     "topic",
+		Model:     "default",
+		Adaptor:   "codex",
+		ContextID: "analyze-rerun",
+		StateDir:  "/tmp/state",
+		ReportDir: "/tmp/report",
+	}
+
+	if err := SaveAnalysisConfig(baseDir, record); err != nil {
+		t.Fatalf("initial save: %v", err)
+	}
+
+	task := taskpkg.NewAnalysisTask("analyze-rerun", "default", "/tmp/state", "/tmp/report", "rerun")
+	task.SetStatus(taskpkg.TaskStatusRunning)
+	task.StartStage(taskpkg.StageScope, "running")
+	task.SetReportPath("/tmp/report/final.md")
+	if err := SaveTaskSnapshot(baseDir, task.Snapshot(), 7); err != nil {
+		t.Fatalf("save completed snapshot: %v", err)
+	}
+
+	record.Topic = "rerun topic"
+	if err := SaveAnalysisConfig(baseDir, record); err != nil {
+		t.Fatalf("rerun save: %v", err)
+	}
+
+	snapshot, pollCount, ok, err := LoadTaskSnapshot(baseDir, record.TaskID)
+	if err != nil {
+		t.Fatalf("load rerun snapshot: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected rerun snapshot to exist")
+	}
+	if snapshot.Status != taskpkg.TaskStatusQueued {
+		t.Fatalf("expected queued after rerun reset, got %s", snapshot.Status)
+	}
+	if snapshot.ReportPath != "" || snapshot.Error != "" {
+		t.Fatalf("expected cleared terminal fields after rerun, got report=%q error=%q", snapshot.ReportPath, snapshot.Error)
+	}
+	if pollCount != 0 {
+		t.Fatalf("expected poll count reset to 0, got %d", pollCount)
+	}
+	if len(snapshot.Stages) != 4 || snapshot.Stages[0].Status != taskpkg.StageStatusPending {
+		t.Fatalf("expected stages reset to pending, got %+v", snapshot.Stages)
+	}
+}

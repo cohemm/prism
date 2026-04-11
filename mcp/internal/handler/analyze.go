@@ -71,6 +71,9 @@ func HandleAnalyze(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 	// (pre-resolved by SKILL.md before calling this tool)
 	ontologyScope, _ := request.Params.Arguments["ontology_scope"].(string)
 	ontologyScope = strings.TrimSpace(ontologyScope)
+	if ontologyScope != "" && !json.Valid([]byte(ontologyScope)) {
+		return mcp.NewToolResultError("ontology_scope must be valid JSON"), nil
+	}
 
 	seedHints, _ := request.Params.Arguments["seed_hints"].(string)
 	seedHints = strings.TrimSpace(seedHints)
@@ -132,17 +135,18 @@ func HandleAnalyze(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 	contextID := task.ID
 	stateDir := filepath.Join(stateBase, contextID)
 	reportDir := filepath.Join(reportBase, contextID)
+	backup := captureExistingAnalysisArtifacts(task.ID, stateDir, reportDir)
 
 	// Update task fields now that we have the directories
 	task.UpdateDirs(contextID, stateDir, reportDir)
 
 	// Create directories
 	if err := os.MkdirAll(stateDir, 0755); err != nil {
-		cleanupFailedAnalysisTask(task.ID, stateDir, reportDir)
+		cleanupFailedAnalysisTask(task.ID, stateDir, reportDir, backup)
 		return mcp.NewToolResultError(fmt.Sprintf("failed to create state directory: %v", err)), nil
 	}
 	if err := os.MkdirAll(reportDir, 0755); err != nil {
-		cleanupFailedAnalysisTask(task.ID, stateDir, reportDir)
+		cleanupFailedAnalysisTask(task.ID, stateDir, reportDir, backup)
 		return mcp.NewToolResultError(fmt.Sprintf("failed to create report directory: %v", err)), nil
 	}
 
@@ -178,12 +182,12 @@ func HandleAnalyze(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 
 	configBytes, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
-		cleanupFailedAnalysisTask(task.ID, stateDir, reportDir)
+		cleanupFailedAnalysisTask(task.ID, stateDir, reportDir, backup)
 		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal config: %v", err)), nil
 	}
 	configPath := filepath.Join(stateDir, "config.json")
 	if err := os.WriteFile(configPath, configBytes, 0644); err != nil {
-		cleanupFailedAnalysisTask(task.ID, stateDir, reportDir)
+		cleanupFailedAnalysisTask(task.ID, stateDir, reportDir, backup)
 		return mcp.NewToolResultError(fmt.Sprintf("failed to write config.json: %v", err)), nil
 	}
 
@@ -202,37 +206,42 @@ func HandleAnalyze(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 		Language:             language,
 		PerspectiveInjection: perspectiveInjection,
 	}); err != nil {
-		cleanupFailedAnalysisTask(task.ID, stateDir, reportDir)
+		cleanupFailedAnalysisTask(task.ID, stateDir, reportDir, backup)
 		return mcp.NewToolResultError(fmt.Sprintf("failed to persist analysis config: %v", err)), nil
 	}
-	task.SetPersistenceHook(func(snapshot taskpkg.TaskSnapshot, pollCount int) error {
-		return analysisstore.SaveTaskSnapshot(PrismBaseDir, snapshot, pollCount)
+	// Create a cancellable context so that persistence failures and later
+	// prism_cancel_task requests can stop in-flight subprocess work.
+	pipelineCtx, pipelineCancel := context.WithCancel(context.Background())
+	task.Ctx = pipelineCtx
+	task.Cancel = pipelineCancel
+	task.SetPersistenceErrorHook(func(persistErr error) {
+		task.DisablePersistence()
+		if task.Cancel != nil {
+			task.Cancel()
+		}
+		task.SetError(fmt.Sprintf("failed to persist task snapshot: %v", persistErr))
 	})
+	if err := task.SetPersistenceHook(func(snapshot taskpkg.TaskSnapshot, pollCount int) error {
+		return analysisstore.SaveTaskSnapshot(PrismBaseDir, snapshot, pollCount)
+	}); err != nil {
+		task.DisablePersistence()
+		cleanupFailedAnalysisTask(task.ID, stateDir, reportDir, backup)
+		return mcp.NewToolResultError(fmt.Sprintf("failed to persist initial task snapshot: %v", err)), nil
+	}
 
 	// --- Write ontology-scope.json to state directory ---
 	// The ontology_scope parameter is a JSON string in canonical {"sources": [...]} format.
 	// Write it as ontology-scope.json so LoadOntologyScopeText() can read it in all stages.
 	if ontologyScope != "" {
-		// Validate that the ontology_scope is valid JSON before writing
-		if !json.Valid([]byte(ontologyScope)) {
-			cleanupFailedAnalysisTask(task.ID, stateDir, reportDir)
-			return mcp.NewToolResultError("ontology_scope must be valid JSON"), nil
-		}
 		scopePath := filepath.Join(stateDir, "ontology-scope.json")
 		if err := os.WriteFile(scopePath, []byte(ontologyScope), 0644); err != nil {
-			cleanupFailedAnalysisTask(task.ID, stateDir, reportDir)
+			task.DisablePersistence()
+			cleanupFailedAnalysisTask(task.ID, stateDir, reportDir, backup)
 			return mcp.NewToolResultError(fmt.Sprintf("failed to write ontology-scope.json: %v", err)), nil
 		}
 	}
 
 	log.Printf("Analysis task %s created: topic=%q model=%s state=%s", task.ID, topic, model, stateDir)
-
-	// --- Launch analysis pipeline in background goroutine ---
-	// Create a cancellable context so that prism_cancel_task (and server shutdown)
-	// can propagate cancellation to all in-flight subprocess work.
-	pipelineCtx, pipelineCancel := context.WithCancel(context.Background())
-	task.Ctx = pipelineCtx
-	task.Cancel = pipelineCancel
 
 	go pipeline.RunAnalysisPipeline(task)
 
@@ -536,23 +545,93 @@ func HandleCancelTask(ctx context.Context, request mcp.CallToolRequest) (*mcp.Ca
 	return mcp.NewToolResultText(string(resultBytes)), nil
 }
 
-func cleanupFailedAnalysisTask(taskID, stateDir, reportDir string) {
+type analysisCreationBackup struct {
+	rowExists         bool
+	configRecord      analysisstore.AnalysisConfigRecord
+	snapshotExists    bool
+	snapshot          taskpkg.TaskSnapshot
+	pollCount         int
+	stateDirExists    bool
+	reportDirExists   bool
+	configPathExists  bool
+	configPathContent []byte
+	scopePathExists   bool
+	scopePathContent  []byte
+}
+
+func captureExistingAnalysisArtifacts(taskID, stateDir, reportDir string) analysisCreationBackup {
+	backup := analysisCreationBackup{
+		stateDirExists:  pathExists(stateDir),
+		reportDirExists: pathExists(reportDir),
+	}
+
+	configPath := filepath.Join(stateDir, "config.json")
+	if content, err := os.ReadFile(configPath); err == nil {
+		backup.configPathExists = true
+		backup.configPathContent = content
+	}
+
+	scopePath := filepath.Join(stateDir, "ontology-scope.json")
+	if content, err := os.ReadFile(scopePath); err == nil {
+		backup.scopePathExists = true
+		backup.scopePathContent = content
+	}
+
+	if rec, ok, err := analysisstore.LoadAnalysisConfig(PrismBaseDir, taskID); err == nil && ok {
+		backup.rowExists = true
+		backup.configRecord = rec
+	}
+	if snapshot, pollCount, ok, err := analysisstore.LoadTaskSnapshot(PrismBaseDir, taskID); err == nil && ok {
+		backup.snapshotExists = true
+		backup.snapshot = snapshot
+		backup.pollCount = pollCount
+	}
+
+	return backup
+}
+
+func cleanupFailedAnalysisTask(taskID, stateDir, reportDir string, backup analysisCreationBackup) {
 	if TaskStore != nil {
 		TaskStore.Remove(taskID)
 	}
-	if taskID != "" {
+
+	if backup.rowExists {
+		if err := analysisstore.SaveAnalysisConfig(PrismBaseDir, backup.configRecord); err == nil && backup.snapshotExists {
+			_ = analysisstore.SaveTaskSnapshot(PrismBaseDir, backup.snapshot, backup.pollCount)
+		}
+	} else if taskID != "" {
 		_ = analysisstore.DeleteAnalysisTask(PrismBaseDir, taskID)
 	}
-	if stateDir != "" {
+
+	configPath := filepath.Join(stateDir, "config.json")
+	if backup.configPathExists {
+		_ = os.WriteFile(configPath, backup.configPathContent, 0o644)
+	} else {
+		_ = os.Remove(configPath)
+	}
+
+	scopePath := filepath.Join(stateDir, "ontology-scope.json")
+	if backup.scopePathExists {
+		_ = os.WriteFile(scopePath, backup.scopePathContent, 0o644)
+	} else {
+		_ = os.Remove(scopePath)
+	}
+
+	if stateDir != "" && !backup.stateDirExists {
 		_ = os.RemoveAll(stateDir)
 	}
-	if reportDir != "" {
+	if reportDir != "" && !backup.reportDirExists {
 		_ = os.RemoveAll(reportDir)
 	}
 }
 
 func loadPersistedTaskSnapshot(taskID string) (taskpkg.TaskSnapshot, int, bool, error) {
 	return analysisstore.LoadTaskSnapshot(PrismBaseDir, taskID)
+}
+
+func pathExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 // resolveOntologyScopeFromBrownfield opens the brownfield store at the given

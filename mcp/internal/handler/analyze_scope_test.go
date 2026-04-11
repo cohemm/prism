@@ -504,3 +504,88 @@ func TestHandleAnalyzeInvalidOntologyScopeCleansUpArtifacts(t *testing.T) {
 		t.Fatalf("expected sqlite row for %s to be removed", taskID)
 	}
 }
+
+func TestHandleAnalyzeInvalidOntologyScopePreservesExistingDeterministicRun(t *testing.T) {
+	repoPath := t.TempDir()
+	dir := setupTestBrownfieldDB(t, []brownfield.Repo{
+		{Path: repoPath, Name: "repo"},
+	}, nil)
+
+	origBase := PrismBaseDir
+	PrismBaseDir = dir
+	defer func() { PrismBaseDir = origBase }()
+
+	TaskStore = taskpkg.NewTaskStore()
+
+	taskID := "analyze-existing-session"
+	stateDir := filepath.Join(dir, "state", taskID)
+	reportDir := filepath.Join(dir, "reports", taskID)
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		t.Fatalf("mkdir state dir: %v", err)
+	}
+	if err := os.MkdirAll(reportDir, 0o755); err != nil {
+		t.Fatalf("mkdir report dir: %v", err)
+	}
+	configContent := []byte(`{"task_id":"` + taskID + `","adaptor":"codex"}`)
+	if err := os.WriteFile(filepath.Join(stateDir, "config.json"), configContent, 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	scopeContent := []byte(`{"sources":[{"path":"/old"}]}`)
+	if err := os.WriteFile(filepath.Join(stateDir, "ontology-scope.json"), scopeContent, 0o644); err != nil {
+		t.Fatalf("write ontology: %v", err)
+	}
+
+	if err := analysisstore.SaveAnalysisConfig(dir, analysisstore.AnalysisConfigRecord{
+		TaskID:    taskID,
+		Topic:     "old topic",
+		Model:     "default",
+		Adaptor:   "codex",
+		ContextID: taskID,
+		StateDir:  stateDir,
+		ReportDir: reportDir,
+	}); err != nil {
+		t.Fatalf("persist config: %v", err)
+	}
+	oldTask := taskpkg.NewAnalysisTask(taskID, "default", stateDir, reportDir, "existing-session")
+	oldTask.SetReportPath(filepath.Join(reportDir, "report.md"))
+	if err := analysisstore.SaveTaskSnapshot(dir, oldTask.Snapshot(), 4); err != nil {
+		t.Fatalf("persist snapshot: %v", err)
+	}
+
+	result, err := HandleAnalyze(context.Background(), makeAnalyzeRequest(map[string]interface{}{
+		"topic":          "bad rerun",
+		"session_id":     "existing-session",
+		"ontology_scope": `{"sources":[`,
+	}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected invalid ontology scope to fail")
+	}
+
+	if got, err := os.ReadFile(filepath.Join(stateDir, "config.json")); err != nil {
+		t.Fatalf("read config after failure: %v", err)
+	} else if string(got) != string(configContent) {
+		t.Fatalf("expected existing config to be preserved, got %q", string(got))
+	}
+	if got, err := os.ReadFile(filepath.Join(stateDir, "ontology-scope.json")); err != nil {
+		t.Fatalf("read ontology after failure: %v", err)
+	} else if string(got) != string(scopeContent) {
+		t.Fatalf("expected existing ontology to be preserved, got %q", string(got))
+	}
+
+	snapshot, pollCount, ok, err := analysisstore.LoadTaskSnapshot(dir, taskID)
+	if err != nil {
+		t.Fatalf("load persisted snapshot: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected persisted snapshot to remain")
+	}
+	if snapshot.Status != taskpkg.TaskStatusCompleted {
+		t.Fatalf("expected completed snapshot to remain, got %s", snapshot.Status)
+	}
+	if pollCount != 4 {
+		t.Fatalf("expected poll count 4 to remain, got %d", pollCount)
+	}
+}

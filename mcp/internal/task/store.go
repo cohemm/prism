@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"sort"
 	"sync"
 	"time"
@@ -105,7 +106,9 @@ type AnalysisTask struct {
 	Ctx    context.Context    `json:"-"`
 	Cancel context.CancelFunc `json:"-"`
 
-	persistHook func(TaskSnapshot, int) error
+	persistHook      func(TaskSnapshot, int) error
+	persistErrHook   func(error)
+	persistErrRaised bool
 }
 
 // NewAnalysisTask creates a new task with all stages initialized to pending.
@@ -335,24 +338,59 @@ func (t *AnalysisTask) snapshotLocked() TaskSnapshot {
 	}
 }
 
-func (t *AnalysisTask) SetPersistenceHook(fn func(TaskSnapshot, int) error) {
+func (t *AnalysisTask) SetPersistenceHook(fn func(TaskSnapshot, int) error) error {
 	t.mu.Lock()
 	t.persistHook = fn
+	t.persistErrRaised = false
 	t.mu.Unlock()
-	t.persistIfConfigured()
+	return t.persistIfConfigured()
 }
 
-func (t *AnalysisTask) persistIfConfigured() {
+func (t *AnalysisTask) SetPersistenceErrorHook(fn func(error)) {
+	t.mu.Lock()
+	t.persistErrHook = fn
+	t.mu.Unlock()
+}
+
+func (t *AnalysisTask) DisablePersistence() {
+	t.mu.Lock()
+	t.persistHook = nil
+	t.persistErrHook = nil
+	t.persistErrRaised = true
+	t.mu.Unlock()
+}
+
+func (t *AnalysisTask) persistIfConfigured() error {
 	t.mu.RLock()
 	fn := t.persistHook
 	if fn == nil {
 		t.mu.RUnlock()
-		return
+		return nil
 	}
 	snapshot := t.snapshotLocked()
 	pollCount := t.PollCount
 	t.mu.RUnlock()
-	_ = fn(snapshot, pollCount)
+	if err := fn(snapshot, pollCount); err != nil {
+		log.Printf("[%s] task snapshot persistence failed: %v", snapshot.ID, err)
+		t.notifyPersistError(err)
+		return err
+	}
+	return nil
+}
+
+func (t *AnalysisTask) notifyPersistError(err error) {
+	t.mu.Lock()
+	if t.persistErrRaised {
+		t.mu.Unlock()
+		return
+	}
+	t.persistErrRaised = true
+	hook := t.persistErrHook
+	t.mu.Unlock()
+
+	if hook != nil {
+		hook(err)
+	}
 }
 
 // TaskSnapshot is an immutable point-in-time view of a task for API responses.

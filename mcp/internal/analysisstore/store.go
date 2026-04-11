@@ -63,6 +63,11 @@ func SaveAnalysisConfig(baseDir string, rec AnalysisConfigRecord) error {
 			report_template = excluded.report_template,
 			language = excluded.language,
 			perspective_injection = excluded.perspective_injection,
+			status = excluded.status,
+			report_path = excluded.report_path,
+			error = excluded.error,
+			poll_count = excluded.poll_count,
+			stages_json = excluded.stages_json,
 			updated_at = CURRENT_TIMESTAMP
 		WHERE analysis_tasks.adaptor = excluded.adaptor
 	`, rec.TaskID, rec.Topic, rec.Model, rec.Adaptor, rec.ContextID, rec.StateDir, rec.ReportDir,

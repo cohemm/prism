@@ -172,9 +172,11 @@ func TestHandleTaskStatusServerRestart(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("persist config: %v", err)
 	}
-	oldTask.SetPersistenceHook(func(snapshot taskpkg.TaskSnapshot, pollCount int) error {
+	if err := oldTask.SetPersistenceHook(func(snapshot taskpkg.TaskSnapshot, pollCount int) error {
 		return analysisstore.SaveTaskSnapshot(prismDir, snapshot, pollCount)
-	})
+	}); err != nil {
+		t.Fatalf("set persistence hook: %v", err)
+	}
 	oldTask.SetStatus(taskpkg.TaskStatusRunning)
 	oldTask.StartStage(taskpkg.StageScope, "running after restart")
 	oldTaskID := oldTask.ID

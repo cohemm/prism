@@ -239,9 +239,11 @@ func TestHandleAnalyzeResultCompletedFallsBackToSQLite(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("persist config: %v", err)
 	}
-	task.SetPersistenceHook(func(snapshot taskpkg.TaskSnapshot, pollCount int) error {
+	if err := task.SetPersistenceHook(func(snapshot taskpkg.TaskSnapshot, pollCount int) error {
 		return analysisstore.SaveTaskSnapshot(prismDir, snapshot, pollCount)
-	})
+	}); err != nil {
+		t.Fatalf("set persistence hook: %v", err)
+	}
 	task.SetReportPath(reportPath)
 
 	TaskStore = taskpkg.NewTaskStore()
