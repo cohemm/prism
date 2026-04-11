@@ -222,12 +222,11 @@ func TestResolveCLIPath_PrefersClaudeConfigWhenConfigured(t *testing.T) {
 	}
 }
 
-func TestComposePrompt_IncludesSystemToolsAndBudget(t *testing.T) {
+func TestComposePrompt_IncludesSystemAndToolingGuidance(t *testing.T) {
 	got := composePrompt("Investigate the failure.", ClaudeOptions{
 		SystemPrompt:    "Follow the shared protocol exactly.",
 		AllowedTools:    []string{"Read", "grep", "Bash"},
 		DisallowedTools: []string{"MCP", "WebFetch"},
-		MaxTurns:        3,
 	})
 
 	for _, needle := range []string{
@@ -240,7 +239,6 @@ func TestComposePrompt_IncludesSystemToolsAndBudget(t *testing.T) {
 		"Do NOT use these tools or capability routes:",
 		"- MCP",
 		"- WebFetch",
-		"## Execution Budget\nKeep the work within at most 3 tool-assisted turns if possible.",
 		"Investigate the failure.",
 	} {
 		if !strings.Contains(got, needle) {

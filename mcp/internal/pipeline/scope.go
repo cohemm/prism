@@ -487,7 +487,6 @@ func RunSeedAnalysis(task *taskpkg.AnalysisTask, cfg AnalysisConfig) error {
 		SeedAnalysisSchema(),
 		systemPrompt,
 		userPrompt,
-		8,
 	)
 	if err != nil {
 		return fmt.Errorf("seed analysis subprocess: %w", err)
@@ -654,7 +653,7 @@ func runSupplementaryResearch(task *taskpkg.AnalysisTask, cfg AnalysisConfig, ga
 	sb.WriteString("\nInvestigate ONLY these specific gaps. Use tools (Grep, Read, Glob, Bash) to find concrete evidence.\n")
 	sb.WriteString("Output your additional findings as structured JSON following the same schema.\n")
 
-	// Run focused research subprocess (5-minute timeout, 8 max turns)
+	// Run focused research subprocess (5-minute timeout)
 	ctx, cancel := context.WithTimeout(task.Ctx, 5*time.Minute)
 	defer cancel()
 
@@ -666,7 +665,6 @@ func runSupplementaryResearch(task *taskpkg.AnalysisTask, cfg AnalysisConfig, ga
 		SeedAnalysisSchema(),
 		sb.String(),
 		"Investigate the DA critique gaps listed above and output additional findings as structured JSON.",
-		0, // unused — timeout controls duration
 	)
 	if err != nil {
 		return fmt.Errorf("supplementary research subprocess: %w", err)

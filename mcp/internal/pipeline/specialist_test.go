@@ -61,11 +61,6 @@ func TestBuildSpecialistCommand_BasicStructure(t *testing.T) {
 		t.Errorf("OutputPath = %q, want %q", cmd.OutputPath, expectedOutput)
 	}
 
-	// Check MaxTurns
-	if cmd.MaxTurns != 10 {
-		t.Errorf("MaxTurns = %d, want 10", cmd.MaxTurns)
-	}
-
 	// Check JSONSchema is set
 	if cmd.JSONSchema == "" {
 		t.Error("JSONSchema must be non-empty")

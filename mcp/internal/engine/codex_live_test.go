@@ -26,7 +26,6 @@ func TestLiveCodexScopedToolsAndSchemaCompletes(t *testing.T) {
 		`{"type":"object","properties":{"summary":{"type":"string"}},"required":["summary"],"additionalProperties":false}`,
 		"You may inspect files if needed, but keep the work minimal and return one short summary field.",
 		"Return structured JSON with summary='ok'.",
-		0,
 	)
 	if err != nil {
 		t.Fatalf("QueryLLMScopedWithToolsAndSchema() error = %v", err)

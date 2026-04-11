@@ -164,9 +164,6 @@ func (ClaudeAdaptor) BuildCLIArgs(req LLMRequest, outputPath, schemaPath string)
 	if req.PermissionMode != "" {
 		args = append(args, "--permission-mode", req.PermissionMode)
 	}
-	if req.MaxTurns > 0 {
-		args = append(args, "--max-turns", fmt.Sprintf("%d", req.MaxTurns))
-	}
 	if req.JSONSchema != "" {
 		args = append(args, "--json-schema", req.JSONSchema)
 	}
