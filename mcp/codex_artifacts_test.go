@@ -2065,7 +2065,7 @@ func TestPRDCommandDispatchesToSharedSkill(t *testing.T) {
 
 	for _, needle := range []string{
 		`description: "Run Prism PRD policy analysis"`,
-		"`${CLAUDE_PLUGIN_ROOT}/skills/prd/SKILL.md`",
+		"`skills/prd/SKILL.md`",
 		"follow its instructions exactly",
 	} {
 		if !strings.Contains(content, needle) {
@@ -2081,7 +2081,7 @@ func TestSetupCommandDispatchesToSharedSkill(t *testing.T) {
 
 	for _, needle := range []string{
 		`description: "Run Prism setup workflow"`,
-		"`${CLAUDE_PLUGIN_ROOT}/skills/setup/SKILL.md`",
+		"`skills/setup/SKILL.md`",
 		"follow its instructions exactly",
 	} {
 		if !strings.Contains(content, needle) {
@@ -2097,7 +2097,7 @@ func TestBrownfieldCommandDispatchesToSharedSkill(t *testing.T) {
 
 	for _, needle := range []string{
 		`description: "Run Prism brownfield repository setup"`,
-		"`${CLAUDE_PLUGIN_ROOT}/skills/brownfield/SKILL.md`",
+		"`skills/brownfield/SKILL.md`",
 		"follow its instructions exactly",
 	} {
 		if !strings.Contains(content, needle) {

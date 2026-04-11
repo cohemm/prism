@@ -139,6 +139,13 @@ func HandleAnalyze(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 			}
 			TaskStore.Remove(taskID)
 		}
+		persisted, _, ok, err := loadPersistedTaskSnapshot(taskID)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to load persisted task status for deterministic rerun: %v", err)), nil
+		}
+		if ok && !persisted.Status.IsTerminal() {
+			return mcp.NewToolResultError(fmt.Sprintf("task %s is still %s in persisted state — deterministic rerun refuses to overwrite a non-terminal saved run", taskID, persisted.Status)), nil
+		}
 	}
 
 	// Create a task to get the generated ID

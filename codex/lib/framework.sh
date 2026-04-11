@@ -526,7 +526,7 @@ prism_psm_render_command_markdown() {
 description: "${description}"
 ---
 
-Read the file at \`\${CLAUDE_PLUGIN_ROOT}/${shared_skill_relative_path}\` using the Read tool and follow its instructions exactly.
+Read the file at \`${shared_skill_relative_path}\` using the Read tool and follow its instructions exactly.
 EOF
 }
 

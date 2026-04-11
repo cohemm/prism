@@ -706,4 +706,61 @@ func TestHandleAnalyzeRejectsDeterministicRerunUntilTerminalTaskFullyExits(t *te
 	if result.IsError {
 		t.Fatalf("expected rerun after done close to succeed, got %s", result.Content[0].(mcp.TextContent).Text)
 	}
+	if rerunTask := TaskStore.Get("analyze-same-session-terminal"); rerunTask != nil {
+		if rerunTask.Cancel != nil {
+			rerunTask.Cancel()
+		}
+		rerunTask.CloseDone()
+		TaskStore.Remove(rerunTask.ID)
+	}
+}
+
+func TestHandleAnalyzeRejectsDeterministicRerunWhilePersistedTaskIsRunning(t *testing.T) {
+	dir := t.TempDir()
+
+	origBase := PrismBaseDir
+	PrismBaseDir = dir
+	defer func() { PrismBaseDir = origBase }()
+
+	TaskStore = taskpkg.NewTaskStore()
+
+	taskID := "analyze-persisted-running"
+	if err := analysisstore.SaveAnalysisConfig(dir, analysisstore.AnalysisConfigRecord{
+		TaskID:        taskID,
+		Topic:         "existing persisted run",
+		Model:         "default",
+		Adaptor:       "claude",
+		ContextID:     taskID,
+		StateDir:      filepath.Join(dir, "state", taskID),
+		ReportDir:     filepath.Join(dir, "reports", taskID),
+		OntologyScope: `{"sources":[],"totals":{"doc":0}}`,
+	}); err != nil {
+		t.Fatalf("SaveAnalysisConfig() error = %v", err)
+	}
+
+	runningTask := taskpkg.NewAnalysisTask(taskID, "default", filepath.Join(dir, "state", taskID), filepath.Join(dir, "reports", taskID), "persisted-running")
+	runningTask.Status = taskpkg.TaskStatusRunning
+	runningTask.ContextID = taskID
+	runningTask.StartStage(taskpkg.StageScope, "persisted running row")
+	snapshot, pollCount := runningTask.SnapshotWithPollCount()
+	if err := analysisstore.SaveTaskSnapshot(dir, snapshot, pollCount); err != nil {
+		t.Fatalf("SaveTaskSnapshot() error = %v", err)
+	}
+
+	result, err := HandleAnalyze(context.Background(), makeAnalyzeRequest(map[string]interface{}{
+		"topic":          "rerun while persisted run is running",
+		"session_id":     "persisted-running",
+		"ontology_scope": `{"sources":[],"totals":{"doc":0}}`,
+	}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected deterministic rerun to fail while persisted task is still running")
+	}
+
+	errText := result.Content[0].(mcp.TextContent).Text
+	if !strings.Contains(errText, "persisted state") {
+		t.Fatalf("expected persisted-state rejection, got %q", errText)
+	}
 }

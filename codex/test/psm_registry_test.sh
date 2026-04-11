@@ -241,8 +241,8 @@ assert_eq "$(prism_psm_require_command_config analyze prompt_function)" "prism_p
 assert_eq "$(prism_psm_require_command_config brownfield shared_skill_relative_path)" "skills/brownfield/SKILL.md" "brownfield should expose its shared skill path through the command config contract"
 assert_eq "$(prism_psm_require_command_config brownfield contract_function)" "prism_psm_brownfield_command_contract" "brownfield should expose its command contract through the command config contract"
 
-assert_file_contains "${REPO_ROOT}/commands/brownfield.md" 'Read the file at `${CLAUDE_PLUGIN_ROOT}/skills/brownfield/SKILL.md` using the Read tool and follow its instructions exactly.'
-assert_file_contains "${REPO_ROOT}/commands/setup.md" 'Read the file at `${CLAUDE_PLUGIN_ROOT}/skills/setup/SKILL.md` using the Read tool and follow its instructions exactly.'
+assert_file_contains "${REPO_ROOT}/commands/brownfield.md" 'Read the file at `skills/brownfield/SKILL.md` using the Read tool and follow its instructions exactly.'
+assert_file_contains "${REPO_ROOT}/commands/setup.md" 'Read the file at `skills/setup/SKILL.md` using the Read tool and follow its instructions exactly.'
 assert_file_contains "${REPO_ROOT}/skills/setup/SKILL.md" "Do not create or sync duplicate Claude slash-command artifacts during this step."
 assert_file_contains "${REPO_ROOT}/skills/setup/SKILL.md" 'Validate that the checked-in `commands/` and `skills/` directories still exist in the Prism repo before continuing.'
 assert_file_contains "${REPO_ROOT}/skills/brownfield/SKILL.md" 'In Codex, this same shared workflow is invoked through `psm brownfield`.'
