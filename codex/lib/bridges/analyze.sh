@@ -185,16 +185,21 @@ Follow the shared Prism analyze skill as the source of truth, but apply this Cod
   if `--config <path>` is present, read that config and use `config.topic` as the description when present, otherwise fall back to remaining arguments;
   if no config is present, use the remaining command arguments as the description;
   if the description is still empty, ask the user directly for what to analyze.
+- Execute the shared adaptor-selection branch exactly:
+  SELECT who you are: codex | claude;
+  because this bridge is Codex-specific, the selected value must be `codex`;
+  store it as `{ADAPTOR}` and pass `adaptor: "{ADAPTOR}"` to `prism_analyze`.
 - Honor the shared Phase 1 exit gate before starting analysis: do not call `prism_analyze` until the description has been collected.
+- Honor the shared Phase 2 exit gate before starting analysis: do not call `prism_analyze` until `{ADAPTOR}` has been selected.
 - When calling `prism_analyze`, preserve the shared optional-field behavior exactly:
   omit optional MCP fields when the shared skill says to omit them rather than inventing defaults in the wrapper layer.
-- Honor the shared Phase 2 exit gate: do not proceed to polling until `prism_analyze` returns a `task_id`.
-- During Phase 3, poll `prism_task_status` every 30 seconds until the task reaches `completed` or `failed`, and surface brief progress updates that include the current stage and progress text.
+- Honor the shared Phase 3 exit gate: do not proceed to polling until `prism_analyze` returns a `task_id`.
+- During Phase 4, poll `prism_task_status` every 30 seconds until the task reaches `completed` or `failed`, and surface brief progress updates that include the current stage and progress text.
 - Preserve the shared polling branches exactly:
   if the user cancels during polling, call `prism_cancel_task(task_id)` and report the cancellation result;
   if the task status is `failed`, report the error and stop without calling `prism_analyze_result`;
   only continue to result retrieval after a `completed` status.
 - Preserve the shared output contract: poll progress via `prism_task_status`, then present the `summary` and `report_path` returned by `prism_analyze_result`.
-- Honor the shared Phase 4 exit gate: after completion, call `prism_analyze_result(task_id)`, present the returned `summary`, and communicate the returned `report_path`.
+- Honor the shared Phase 5 exit gate: after completion, call `prism_analyze_result(task_id)`, present the returned `summary`, and communicate the returned `report_path`.
 EOF
 }
