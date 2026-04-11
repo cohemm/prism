@@ -60,8 +60,6 @@ func TestCodexAnalyzeSkillDispatchesToSharedPrismWorkflow(t *testing.T) {
 		"/prism:analyze` -> `psm analyze`",
 		"`Use \\`psm brownfield\\``",
 		"PRISM_REPO_PATH/skills/analyze/SKILL.md",
-		"PRISM_REPO_PATH/skills/analyze/prompts/seed-analyst.md",
-		"PRISM_REPO_PATH/skills/analyze/templates/report.md",
 		"`PRISM_REPO_PATH` when it points to a Prism repo containing the required shared analyze assets.",
 		"The installed `repo-root` pointer shipped with the shared `psm` integration layer.",
 		"A Prism repo root inferred relative to the shared `psm` library.",
@@ -402,6 +400,7 @@ func TestInstalledPSMWrapperDispatchesClosedMilestoneCommandsViaSharedRunner(t *
 				"psm analyze cache\\ invalidation",
 				"Registered Prism Codex skill:\nprism-analyze",
 				"skills/analyze/prompts/seed-analyst.md",
+				"The shared skill is the only workflow definition. Do not restate, paraphrase, or reorder its phases, exit gates, or MCP contract in the Codex layer.",
 			},
 		},
 		{
@@ -853,15 +852,9 @@ func TestInstalledPSMAnalyzeResolvesSharedAssetRootWithoutEnvOverride(t *testing
 		"3. Otherwise infer the Prism repo root relative to the shared psm library.",
 		"The resolved asset root for this invocation is:",
 		"Do not resolve Prism assets from the user's working directory.",
-		"Preserve the full shared-skill decision flow and exit gates, not just the MCP payload shape.",
-		"if `--config <path>` is present, read that config and use `config.topic` as the description when present, otherwise fall back to remaining arguments;",
-		"if no config is present, use the remaining command arguments as the description;",
-		"if the description is still empty, ask the user directly for what to analyze.",
-		"Honor the shared Phase 1 exit gate before starting analysis: do not call `prism_analyze` until the description has been collected.",
-		"Honor the shared Phase 2 exit gate: do not proceed to polling until `prism_analyze` returns a `task_id`.",
-		"During Phase 3, poll `prism_task_status` every 30 seconds until the task reaches `completed` or `failed`, and surface brief progress updates that include the current stage and progress text.",
-		"if the task status is `failed`, report the error and stop without calling `prism_analyze_result`;",
-		"Honor the shared Phase 4 exit gate: after completion, call `prism_analyze_result(task_id)`, present the returned `summary`, and communicate the returned `report_path`.",
+		"The shared skill is the only workflow definition. Do not restate, paraphrase, or reorder its phases, exit gates, or MCP contract in the Codex layer.",
+		"Preserve the shared analyze config schema and MCP payload contract exactly.",
+		"When the shared skill asks `SELECT who you are: codex | claude`, choose `codex`, store it as `{ADAPTOR}`, and pass `adaptor: \"{ADAPTOR}\"` to `prism_analyze`.",
 		filepath.Join(install.repoRoot, "skills", "analyze", "SKILL.md"),
 		filepath.Join(install.repoRoot, "skills", "analyze", "templates", "report.md"),
 	} {
@@ -1028,20 +1021,9 @@ func TestInstalledPSMAnalyzePromptPreservesSharedSkillDecisionFlow(t *testing.T)
 	_, stdinOutput := runInstalledPSMWithFakeCodex(t, install, unrelatedDir, "analyze", "cache invalidation")
 
 	for _, needle := range []string{
-		"Execute the shared intake branch exactly:",
-		"if `--config <path>` is present, read that config and use `config.topic` as the description when present, otherwise fall back to remaining arguments;",
-		"if no config is present, use the remaining command arguments as the description;",
-		"if the description is still empty, ask the user directly for what to analyze.",
-		"Honor the shared Phase 1 exit gate before starting analysis: do not call `prism_analyze` until the description has been collected.",
-		"When calling `prism_analyze`, preserve the shared optional-field behavior exactly:",
-		"omit optional MCP fields when the shared skill says to omit them rather than inventing defaults in the wrapper layer.",
-		"Honor the shared Phase 2 exit gate: do not proceed to polling until `prism_analyze` returns a `task_id`.",
-		"During Phase 3, poll `prism_task_status` every 30 seconds until the task reaches `completed` or `failed`, and surface brief progress updates that include the current stage and progress text.",
-		"if the user cancels during polling, call `prism_cancel_task(task_id)` and report the cancellation result;",
-		"if the task status is `failed`, report the error and stop without calling `prism_analyze_result`;",
-		"only continue to result retrieval after a `completed` status.",
-		"Preserve the shared output contract: poll progress via `prism_task_status`, then present the `summary` and `report_path` returned by `prism_analyze_result`.",
-		"Honor the shared Phase 4 exit gate: after completion, call `prism_analyze_result(task_id)`, present the returned `summary`, and communicate the returned `report_path`.",
+		"The shared skill is the only workflow definition. Do not restate, paraphrase, or reorder its phases, exit gates, or MCP contract in the Codex layer.",
+		"When the shared skill asks `SELECT who you are: codex | claude`, choose `codex`, store it as `{ADAPTOR}`, and pass `adaptor: \"{ADAPTOR}\"` to `prism_analyze`.",
+		"Preserve the shared analyze config schema and MCP payload contract exactly. Do not rename, drop, or reinterpret fields such as `topic`, `input_context`, `report_template`, `seed_hints`, `session_id`, `model`, `ontology_scope`, or `perspective_injection`.",
 	} {
 		if !strings.Contains(stdinOutput, needle) {
 			t.Fatalf("expected %q in codex prompt\n%s", needle, stdinOutput)
@@ -1138,10 +1120,9 @@ printf 'ok\n'
 		filepath.Join(install.repoRoot, "skills", "analyze", "prompts", "seed-analyst.md"),
 		filepath.Join(install.repoRoot, "skills", "analyze", "prompts", "verification-protocol.md"),
 		reportTemplatePath,
-		"Preserve the full shared-skill decision flow and exit gates, not just the MCP payload shape.",
 		"Preserve the shared analyze config schema and MCP payload contract exactly.",
 		"Path-valued analyze config fields have already been normalized for Codex execution context. Pass them through unchanged once read.",
-		"Preserve the shared output contract: poll progress via `prism_task_status`, then present the `summary` and `report_path` returned by `prism_analyze_result`.",
+		"The shared skill is the only workflow definition. Do not restate, paraphrase, or reorder its phases, exit gates, or MCP contract in the Codex layer.",
 	} {
 		if !strings.Contains(stdinOutput, needle) {
 			t.Fatalf("expected %q in codex prompt\n%s", needle, stdinOutput)
@@ -1576,8 +1557,8 @@ func TestCodexIncidentSkillDispatchesToSharedPrismWorkflow(t *testing.T) {
 		"any Codex-side analyze invocation must use `psm analyze`",
 		"`PRISM_REPO_PATH` when it points to a Prism repo containing `skills/incident/SKILL.md`.",
 		"Do not assume the command was launched from within `~/prism` or from the user's current working directory.",
-		"`prism_analyze` dispatch with the shared incident `report_template`, `perspective_injection`, and language contract;",
-		"`prism_analyze_result(task_id)` with summary, report path, and raw-artifact location.",
+		"Treat the shared incident skill as the only workflow definition.",
+		"Reuse Prism's bundled MCP tools, prompts, perspectives, and templates from the shared skill directory.",
 		"Do not reimplement or paraphrase the Prism incident workflow in this Codex wrapper.",
 	} {
 		if !strings.Contains(content, needle) {
@@ -1667,18 +1648,11 @@ func TestCodexPRDSkillDispatchesToSharedPrismWorkflow(t *testing.T) {
 		"# psm prd",
 		"`PRISM_REPO_PATH` when it points to a Prism repo containing `skills/prd/SKILL.md`; otherwise fall back to `Glob(pattern=\"**/skills/prd/SKILL.md\")`.",
 		"Follow that shared skill exactly.",
-		"Preserve the shared PRD wrapper phases exactly: PRD path intake, shared session/state setup, analyze config creation, analyze delegation, post-processing, report verification, and final report delivery.",
 		"/prism:prd` -> `psm prd`",
 		"`Skill(skill=\"prism:analyze\", args=\"...\")` -> `psm analyze ...`",
 		"Resolve the PRD input path from the user's launch directory, not from the shared Prism repo, and fail if the referenced file does not exist.",
-		"~/.prism/state/prd-{short-id}/analyze-config.json",
-		"~/.prism/state/analyze-{short-id}/analyst-findings.md",
-		"invoke analyze as `psm analyze --config ~/.prism/state/prd-{short-id}/analyze-config.json`",
-		"require the post-processor to return that same report file path as its handoff result",
-		"{PRD_DIR}/prd-policy-review-report.md",
-		"PM Decision Checklist",
-		"`PRISM_REPO_PATH/skills/prd/prompts/post-processor.md`",
-		"`PRISM_REPO_PATH/skills/prd/templates/report.md`",
+		"Treat the shared PRD skill as the only workflow definition.",
+		"When the shared PRD skill resolves files relative to its own `SKILL.md`, bind `SKILL_DIR` to `PRISM_REPO_PATH/skills/prd`.",
 		"Do not assume the command was launched from within `~/prism` or from the user's current working directory.",
 		"Do not reimplement or paraphrase the Prism PRD workflow in this Codex wrapper.",
 	} {
@@ -1827,15 +1801,8 @@ func TestInstalledPSMWrapperDispatchesPRDFromOutsideRepoRootWithSharedArtifactCo
 		unrelatedDir,
 		"Treat the following as an exact Prism command invocation",
 		"Treat `psm prd ...` as the exact Codex equivalent of Claude Code `/prism:prd ...`.",
-		"if the PRD file path is relative, resolve it from `PRISM_TARGET_CWD`, not from the shared Prism repo.",
-		"write `~/.prism/state/prd-{short-id}/analyze-config.json` with the shared `topic`, `input_context`, `seed_hints`, and `session_id` contract;",
-		"keep `~/.prism/state/prd-{short-id}/analyze-config.json` as the concrete handoff artifact and do not substitute a different filename or directory.",
-		"require `analyst-findings.md` before post-processing;",
-		"require `~/.prism/state/prd-{short-id}/prd-policy-review-report.md` to exist after post-processing;",
-		"require the post-processor handoff result to be that exact report path.",
-		"copy the final report into the PRD file's directory as `prd-policy-review-report.md`;",
-		"report both the copied report path and `~/.prism/state/prd-{short-id}/prd-policy-review-report.md`;",
-		"mention the raw analyze artifacts directory under `~/.prism/state/analyze-{short-id}/`;",
+		"Preserve the PRD input path semantics from the shared skill: resolve user-provided PRD paths from `PRISM_TARGET_CWD`, not from the shared Prism repo.",
+		"Preserve the generated analyze config and report artifact paths exactly as written by the shared skill.",
 	} {
 		if !strings.Contains(stdinOutput, needle) {
 			t.Fatalf("expected %q in codex prompt\n%s", needle, stdinOutput)
@@ -2352,8 +2319,8 @@ func representativePSMInvocations() map[string]psmRepresentativeInvocation {
 			promptCommand: "psm analyze cache\\ invalidation",
 			promptNeedles: []string{
 				"{REPO_ROOT}/skills/analyze/templates/report.md",
-				"Preserve the full shared-skill decision flow and exit gates, not just the MCP payload shape.",
-				"Honor the shared Phase 2 exit gate: do not proceed to polling until `prism_analyze` returns a `task_id`.",
+				"The shared skill is the only workflow definition. Do not restate, paraphrase, or reorder its phases, exit gates, or MCP contract in the Codex layer.",
+				"When the shared skill asks `SELECT who you are: codex | claude`, choose `codex`, store it as `{ADAPTOR}`, and pass `adaptor: \"{ADAPTOR}\"` to `prism_analyze`.",
 			},
 		},
 		"brownfield": {
