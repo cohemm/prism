@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/heechul/prism-mcp/internal/analysisstore"
 	prismconfig "github.com/heechul/prism-mcp/internal/config"
 	"github.com/heechul/prism-mcp/internal/parallel"
 )
@@ -18,6 +19,7 @@ import (
 type AnalysisConfig struct {
 	Topic                string `json:"topic"`
 	Model                string `json:"model"`
+	Adaptor              string `json:"adaptor,omitempty"`
 	TaskID               string `json:"task_id"`
 	ContextID            string `json:"context_id"`
 	StateDir             string `json:"state_dir"`
@@ -39,6 +41,15 @@ type ontologyScopeSource struct {
 // ReadAnalysisConfig reads config.json from the task's state directory.
 func ReadAnalysisConfig(stateDir string) (AnalysisConfig, error) {
 	var cfg AnalysisConfig
+	if persisted, ok, err := readPersistedAnalysisConfig(stateDir); err != nil {
+		return cfg, err
+	} else if ok {
+		if err := validateAnalysisAdaptor(persisted.Adaptor); err != nil {
+			return cfg, err
+		}
+		return persisted, nil
+	}
+
 	data, err := os.ReadFile(filepath.Join(stateDir, "config.json"))
 	if err != nil {
 		return cfg, fmt.Errorf("read config.json: %w", err)
@@ -46,7 +57,65 @@ func ReadAnalysisConfig(stateDir string) (AnalysisConfig, error) {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return cfg, fmt.Errorf("parse config.json: %w", err)
 	}
+	cfg.Adaptor = normalizeLegacyAnalysisAdaptor(cfg.Adaptor)
+	if err := validateAnalysisAdaptor(cfg.Adaptor); err != nil {
+		return cfg, err
+	}
 	return cfg, nil
+}
+
+func readPersistedAnalysisConfig(stateDir string) (AnalysisConfig, bool, error) {
+	taskID := strings.TrimSpace(filepath.Base(filepath.Clean(stateDir)))
+	if taskID == "" || taskID == "." || taskID == string(filepath.Separator) {
+		return AnalysisConfig{}, false, nil
+	}
+
+	baseDir := filepath.Dir(filepath.Dir(filepath.Clean(stateDir)))
+	record, ok, err := analysisstore.LoadAnalysisConfig(baseDir, taskID)
+	if err != nil {
+		return AnalysisConfig{}, false, fmt.Errorf("load analysis config from sqlite: %w", err)
+	}
+	if !ok {
+		return AnalysisConfig{}, false, nil
+	}
+
+	return AnalysisConfig{
+		Topic:                record.Topic,
+		Model:                record.Model,
+		Adaptor:              record.Adaptor,
+		TaskID:               record.TaskID,
+		ContextID:            record.ContextID,
+		StateDir:             record.StateDir,
+		ReportDir:            record.ReportDir,
+		InputContext:         record.InputContext,
+		OntologyScope:        record.OntologyScope,
+		SeedHints:            record.SeedHints,
+		ReportTemplate:       record.ReportTemplate,
+		Language:             record.Language,
+		PerspectiveInjection: record.PerspectiveInjection,
+	}, true, nil
+}
+
+func validateAnalysisAdaptor(adaptor string) error {
+	adaptor = strings.ToLower(strings.TrimSpace(adaptor))
+	switch adaptor {
+	case "codex", "claude":
+		return nil
+	default:
+		return fmt.Errorf("analysis config has invalid adaptor %q", adaptor)
+	}
+}
+
+func normalizeLegacyAnalysisAdaptor(adaptor string) string {
+	adaptor = strings.ToLower(strings.TrimSpace(adaptor))
+	if adaptor == "codex" || adaptor == "claude" {
+		return adaptor
+	}
+	resolved := strings.ToLower(strings.TrimSpace(prismconfig.ResolveRuntimeBackend()))
+	if resolved == "codex" || resolved == "claude" {
+		return resolved
+	}
+	return "claude"
 }
 
 // ResolveAnalysisWorkDir picks a filesystem workspace root for tool-driven Codex
