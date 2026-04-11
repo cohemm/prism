@@ -3,9 +3,11 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/heechul/prism-mcp/internal/analysisstore"
 	taskpkg "github.com/heechul/prism-mcp/internal/task"
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -152,26 +154,51 @@ func TestHandleTaskStatusRemovedTask(t *testing.T) {
 }
 
 func TestHandleTaskStatusServerRestart(t *testing.T) {
-	// Simulate server restart: old task_id from previous session
-	// is polled against a fresh (empty) TaskStore
+	prismDir := t.TempDir()
+	origBase := PrismBaseDir
+	PrismBaseDir = prismDir
+	defer func() { PrismBaseDir = origBase }()
+
 	TaskStore = taskpkg.NewTaskStore()
-	oldTask := TaskStore.Create("ctx-old", "claude-sonnet-4-6", "/tmp/state", "/tmp/reports", "")
+	oldTask := TaskStore.Create("ctx-old", "claude-sonnet-4-6", filepath.Join(prismDir, "state", "analyze-old"), filepath.Join(prismDir, "reports", "analyze-old"), "")
+	if err := analysisstore.SaveAnalysisConfig(prismDir, analysisstore.AnalysisConfigRecord{
+		TaskID:    oldTask.ID,
+		Topic:     "restart test",
+		Model:     "default",
+		Adaptor:   "codex",
+		ContextID: oldTask.ContextID,
+		StateDir:  oldTask.StateDir,
+		ReportDir: oldTask.ReportDir,
+	}); err != nil {
+		t.Fatalf("persist config: %v", err)
+	}
+	oldTask.SetPersistenceHook(func(snapshot taskpkg.TaskSnapshot, pollCount int) error {
+		return analysisstore.SaveTaskSnapshot(prismDir, snapshot, pollCount)
+	})
+	oldTask.SetStatus(taskpkg.TaskStatusRunning)
+	oldTask.StartStage(taskpkg.StageScope, "running after restart")
 	oldTaskID := oldTask.ID
 
 	// "Restart" — replace the store with a fresh one
 	TaskStore = taskpkg.NewTaskStore()
 
-	// Polling the old task_id should return "not found"
+	// Polling the old task_id should fall back to persisted sqlite snapshot
 	result, err := HandleTaskStatus(context.Background(), makeStatusRequest(oldTaskID))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !result.IsError {
-		t.Fatal("expected error result for task from previous server session")
+	if result.IsError {
+		t.Fatalf("unexpected error result: %s", result.Content[0].(mcp.TextContent).Text)
 	}
-	errText := result.Content[0].(mcp.TextContent).Text
-	if !strings.Contains(errText, "not found") {
-		t.Errorf("error should contain 'not found', got %q", errText)
+	var snap taskpkg.TaskSnapshot
+	if err := json.Unmarshal([]byte(result.Content[0].(mcp.TextContent).Text), &snap); err != nil {
+		t.Fatalf("unmarshal snapshot: %v", err)
+	}
+	if snap.Status != taskpkg.TaskStatusRunning {
+		t.Fatalf("expected running status from persisted snapshot, got %s", snap.Status)
+	}
+	if snap.Stages[0].Detail != "running after restart" {
+		t.Fatalf("expected persisted stage detail, got %q", snap.Stages[0].Detail)
 	}
 }
 

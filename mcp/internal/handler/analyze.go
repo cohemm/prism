@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	"github.com/heechul/prism-mcp/internal/analysisstore"
-	prismconfig "github.com/heechul/prism-mcp/internal/config"
 	"github.com/heechul/prism-mcp/internal/brownfield"
+	prismconfig "github.com/heechul/prism-mcp/internal/config"
 	"github.com/heechul/prism-mcp/internal/pipeline"
 	taskpkg "github.com/heechul/prism-mcp/internal/task"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -58,10 +58,10 @@ func HandleAnalyze(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 		return mcp.NewToolResultError(fmt.Sprintf("invalid model %q", model)), nil
 	}
 
-	adaptor, _ := request.Params.Arguments["adaptor"].(string)
-	adaptor = resolveRequestedAdaptor(adaptor)
+	rawAdaptor, _ := request.Params.Arguments["adaptor"].(string)
+	adaptor := resolveRequestedAdaptor(rawAdaptor)
 	if adaptor == "" {
-		return mcp.NewToolResultError(fmt.Sprintf("invalid adaptor %q", adaptor)), nil
+		return mcp.NewToolResultError(fmt.Sprintf("invalid adaptor %q", strings.TrimSpace(rawAdaptor))), nil
 	}
 
 	inputContext, _ := request.Params.Arguments["input_context"].(string)
@@ -138,11 +138,11 @@ func HandleAnalyze(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 
 	// Create directories
 	if err := os.MkdirAll(stateDir, 0755); err != nil {
-		TaskStore.Remove(task.ID)
+		cleanupFailedAnalysisTask(task.ID, stateDir, reportDir)
 		return mcp.NewToolResultError(fmt.Sprintf("failed to create state directory: %v", err)), nil
 	}
 	if err := os.MkdirAll(reportDir, 0755); err != nil {
-		TaskStore.Remove(task.ID)
+		cleanupFailedAnalysisTask(task.ID, stateDir, reportDir)
 		return mcp.NewToolResultError(fmt.Sprintf("failed to create report directory: %v", err)), nil
 	}
 
@@ -178,12 +178,12 @@ func HandleAnalyze(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 
 	configBytes, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
-		TaskStore.Remove(task.ID)
+		cleanupFailedAnalysisTask(task.ID, stateDir, reportDir)
 		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal config: %v", err)), nil
 	}
 	configPath := filepath.Join(stateDir, "config.json")
 	if err := os.WriteFile(configPath, configBytes, 0644); err != nil {
-		TaskStore.Remove(task.ID)
+		cleanupFailedAnalysisTask(task.ID, stateDir, reportDir)
 		return mcp.NewToolResultError(fmt.Sprintf("failed to write config.json: %v", err)), nil
 	}
 
@@ -202,9 +202,12 @@ func HandleAnalyze(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 		Language:             language,
 		PerspectiveInjection: perspectiveInjection,
 	}); err != nil {
-		TaskStore.Remove(task.ID)
+		cleanupFailedAnalysisTask(task.ID, stateDir, reportDir)
 		return mcp.NewToolResultError(fmt.Sprintf("failed to persist analysis config: %v", err)), nil
 	}
+	task.SetPersistenceHook(func(snapshot taskpkg.TaskSnapshot, pollCount int) error {
+		return analysisstore.SaveTaskSnapshot(PrismBaseDir, snapshot, pollCount)
+	})
 
 	// --- Write ontology-scope.json to state directory ---
 	// The ontology_scope parameter is a JSON string in canonical {"sources": [...]} format.
@@ -212,12 +215,12 @@ func HandleAnalyze(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 	if ontologyScope != "" {
 		// Validate that the ontology_scope is valid JSON before writing
 		if !json.Valid([]byte(ontologyScope)) {
-			TaskStore.Remove(task.ID)
+			cleanupFailedAnalysisTask(task.ID, stateDir, reportDir)
 			return mcp.NewToolResultError("ontology_scope must be valid JSON"), nil
 		}
 		scopePath := filepath.Join(stateDir, "ontology-scope.json")
 		if err := os.WriteFile(scopePath, []byte(ontologyScope), 0644); err != nil {
-			TaskStore.Remove(task.ID)
+			cleanupFailedAnalysisTask(task.ID, stateDir, reportDir)
 			return mcp.NewToolResultError(fmt.Sprintf("failed to write ontology-scope.json: %v", err)), nil
 		}
 	}
@@ -279,25 +282,33 @@ func HandleTaskStatus(ctx context.Context, request mcp.CallToolRequest) (*mcp.Ca
 	}
 
 	task := TaskStore.Get(taskID)
+	var snapshot taskpkg.TaskSnapshot
 	if task == nil {
-		return mcp.NewToolResultError(fmt.Sprintf("task not found: %s", taskID)), nil
-	}
-
-	// Enforce max poll iterations for non-terminal tasks.
-	// After taskpkg.MaxPollIterations (120) polls at 30-second intervals (60 minutes),
-	// auto-cancel the task to prevent infinite polling.
-	snapshot := task.Snapshot()
-	if !snapshot.Status.IsTerminal() {
-		pollCount := task.IncrPollCount()
-		if pollCount > taskpkg.MaxPollIterations {
-			log.Printf("[%s] Poll limit exceeded (%d > %d) — cancelling task",
-				taskID, pollCount, taskpkg.MaxPollIterations)
-			if task.Cancel != nil {
-				task.Cancel()
+		persisted, _, ok, err := loadPersistedTaskSnapshot(taskID)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to load task status: %v", err)), nil
+		}
+		if !ok {
+			return mcp.NewToolResultError(fmt.Sprintf("task not found: %s", taskID)), nil
+		}
+		snapshot = persisted
+	} else {
+		// Enforce max poll iterations for non-terminal tasks.
+		// After taskpkg.MaxPollIterations (120) polls at 30-second intervals (60 minutes),
+		// auto-cancel the task to prevent infinite polling.
+		snapshot = task.Snapshot()
+		if !snapshot.Status.IsTerminal() {
+			pollCount := task.IncrPollCount()
+			if pollCount > taskpkg.MaxPollIterations {
+				log.Printf("[%s] Poll limit exceeded (%d > %d) — cancelling task",
+					taskID, pollCount, taskpkg.MaxPollIterations)
+				if task.Cancel != nil {
+					task.Cancel()
+				}
+				task.SetError(fmt.Sprintf("poll limit exceeded: %d polls (max %d) — task timed out after prolonged execution", pollCount, taskpkg.MaxPollIterations))
+				// Re-take snapshot after failure
+				snapshot = task.Snapshot()
 			}
-			task.SetError(fmt.Sprintf("poll limit exceeded: %d polls (max %d) — task timed out after prolonged execution", pollCount, taskpkg.MaxPollIterations))
-			// Re-take snapshot after failure
-			snapshot = task.Snapshot()
 		}
 	}
 
@@ -328,7 +339,14 @@ func HandleAnalyzeResult(ctx context.Context, request mcp.CallToolRequest) (*mcp
 
 	snapshot, found := TaskStore.Snapshot(taskID)
 	if !found {
-		return mcp.NewToolResultError(fmt.Sprintf("task not found: %s", taskID)), nil
+		var err error
+		snapshot, _, found, err = loadPersistedTaskSnapshot(taskID)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to load task result: %v", err)), nil
+		}
+		if !found {
+			return mcp.NewToolResultError(fmt.Sprintf("task not found: %s", taskID)), nil
+		}
 	}
 
 	switch snapshot.Status {
@@ -463,7 +481,26 @@ func HandleCancelTask(ctx context.Context, request mcp.CallToolRequest) (*mcp.Ca
 
 	task := TaskStore.Get(taskID)
 	if task == nil {
-		return mcp.NewToolResultError(fmt.Sprintf("task not found: %s", taskID)), nil
+		snapshot, _, ok, err := loadPersistedTaskSnapshot(taskID)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to load task for cancellation: %v", err)), nil
+		}
+		if !ok {
+			return mcp.NewToolResultError(fmt.Sprintf("task not found: %s", taskID)), nil
+		}
+		if snapshot.Status.IsTerminal() {
+			resp := map[string]string{
+				"task_id": taskID,
+				"status":  string(snapshot.Status),
+				"message": fmt.Sprintf("task already %s — nothing to cancel", snapshot.Status),
+			}
+			resultBytes, err := json.Marshal(resp)
+			if err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("failed to marshal response: %v", err)), nil
+			}
+			return mcp.NewToolResultText(string(resultBytes)), nil
+		}
+		return mcp.NewToolResultError(fmt.Sprintf("task %s exists in persisted state but is not active in memory — cancellation after restart is not supported", taskID)), nil
 	}
 
 	// Check if already in a terminal state
@@ -497,6 +534,25 @@ func HandleCancelTask(ctx context.Context, request mcp.CallToolRequest) (*mcp.Ca
 	}
 
 	return mcp.NewToolResultText(string(resultBytes)), nil
+}
+
+func cleanupFailedAnalysisTask(taskID, stateDir, reportDir string) {
+	if TaskStore != nil {
+		TaskStore.Remove(taskID)
+	}
+	if taskID != "" {
+		_ = analysisstore.DeleteAnalysisTask(PrismBaseDir, taskID)
+	}
+	if stateDir != "" {
+		_ = os.RemoveAll(stateDir)
+	}
+	if reportDir != "" {
+		_ = os.RemoveAll(reportDir)
+	}
+}
+
+func loadPersistedTaskSnapshot(taskID string) (taskpkg.TaskSnapshot, int, bool, error) {
+	return analysisstore.LoadTaskSnapshot(PrismBaseDir, taskID)
 }
 
 // resolveOntologyScopeFromBrownfield opens the brownfield store at the given

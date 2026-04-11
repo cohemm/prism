@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/heechul/prism-mcp/internal/analysisstore"
 	"github.com/heechul/prism-mcp/internal/brownfield"
 	"github.com/heechul/prism-mcp/internal/pipeline"
 	taskpkg "github.com/heechul/prism-mcp/internal/task"
@@ -454,5 +455,52 @@ func TestResolveRequestedAdaptorFallbackOrder(t *testing.T) {
 	t.Setenv("PRISM_LLM_BACKEND", "")
 	if got := resolveRequestedAdaptor(""); got != "claude" {
 		t.Fatalf("resolveRequestedAdaptor(empty) final fallback = %q, want claude", got)
+	}
+}
+
+func TestHandleAnalyzeInvalidOntologyScopeCleansUpArtifacts(t *testing.T) {
+	repoPath := t.TempDir()
+	dir := setupTestBrownfieldDB(t, []brownfield.Repo{
+		{Path: repoPath, Name: "repo"},
+	}, nil)
+
+	origBase := PrismBaseDir
+	PrismBaseDir = dir
+	defer func() { PrismBaseDir = origBase }()
+
+	TaskStore = taskpkg.NewTaskStore()
+
+	sessionID := "cleanup-invalid-ontology"
+	result, err := HandleAnalyze(context.Background(), makeAnalyzeRequest(map[string]interface{}{
+		"topic":          "cleanup invalid ontology",
+		"session_id":     sessionID,
+		"ontology_scope": `{"sources":[`,
+	}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected invalid ontology scope to fail")
+	}
+
+	taskID := "analyze-" + sessionID
+	if TaskStore.Get(taskID) != nil {
+		t.Fatalf("expected task %s to be removed from memory", taskID)
+	}
+
+	stateDir := filepath.Join(dir, "state", taskID)
+	if _, err := os.Stat(stateDir); !os.IsNotExist(err) {
+		t.Fatalf("expected state dir to be removed, stat err=%v", err)
+	}
+
+	reportDir := filepath.Join(dir, "reports", taskID)
+	if _, err := os.Stat(reportDir); !os.IsNotExist(err) {
+		t.Fatalf("expected report dir to be removed, stat err=%v", err)
+	}
+
+	if _, ok, err := analysisstore.LoadAnalysisConfig(dir, taskID); err != nil {
+		t.Fatalf("load analysis config: %v", err)
+	} else if ok {
+		t.Fatalf("expected sqlite row for %s to be removed", taskID)
 	}
 }

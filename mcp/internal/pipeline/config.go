@@ -44,6 +44,9 @@ func ReadAnalysisConfig(stateDir string) (AnalysisConfig, error) {
 	if persisted, ok, err := readPersistedAnalysisConfig(stateDir); err != nil {
 		return cfg, err
 	} else if ok {
+		if err := validateAnalysisAdaptor(persisted.Adaptor); err != nil {
+			return cfg, err
+		}
 		return persisted, nil
 	}
 
@@ -53,6 +56,10 @@ func ReadAnalysisConfig(stateDir string) (AnalysisConfig, error) {
 	}
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return cfg, fmt.Errorf("parse config.json: %w", err)
+	}
+	cfg.Adaptor = normalizeLegacyAnalysisAdaptor(cfg.Adaptor)
+	if err := validateAnalysisAdaptor(cfg.Adaptor); err != nil {
+		return cfg, err
 	}
 	return cfg, nil
 }
@@ -87,6 +94,28 @@ func readPersistedAnalysisConfig(stateDir string) (AnalysisConfig, bool, error) 
 		Language:             record.Language,
 		PerspectiveInjection: record.PerspectiveInjection,
 	}, true, nil
+}
+
+func validateAnalysisAdaptor(adaptor string) error {
+	adaptor = strings.ToLower(strings.TrimSpace(adaptor))
+	switch adaptor {
+	case "codex", "claude":
+		return nil
+	default:
+		return fmt.Errorf("analysis config has invalid adaptor %q", adaptor)
+	}
+}
+
+func normalizeLegacyAnalysisAdaptor(adaptor string) string {
+	adaptor = strings.ToLower(strings.TrimSpace(adaptor))
+	if adaptor == "codex" || adaptor == "claude" {
+		return adaptor
+	}
+	resolved := strings.ToLower(strings.TrimSpace(prismconfig.ResolveRuntimeBackend()))
+	if resolved == "codex" || resolved == "claude" {
+		return resolved
+	}
+	return "claude"
 }
 
 // ResolveAnalysisWorkDir picks a filesystem workspace root for tool-driven Codex
