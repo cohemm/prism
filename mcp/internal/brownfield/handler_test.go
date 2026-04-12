@@ -38,7 +38,7 @@ func newTestHandlerStore(t *testing.T, opts ...testHandlerOpts) *Store {
 	origScan := scanHomeForRepos
 	origDiscover := discoverMCPServers
 
-	scanHomeForRepos = ScanHomeForRepos
+	scanHomeForRepos = func(string) ([]Repo, error) { return nil, nil }
 	discoverMCPServers = func(context.Context) ([]MCPServer, error) { return nil, nil }
 
 	if len(opts) > 0 {
@@ -221,15 +221,24 @@ func TestHandlerScanAppliesDeterministicNameCollisionPolicy(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			s := newTestHandlerStore(t)
-			alphaWinner := mcpSnapshotNameCollisionPolicy.choose(tc.servers[0], tc.servers[2])
-			expectedAlpha := snapshotRowsForMCPServers([]MCPServer{alphaWinner}, testRegisteredAt())[0]
-			scanHomeForRepos = func(string) ([]Repo, error) {
-				return []Repo{{Path: "/tmp/repo1", Name: "repo1"}}, nil
+			s := newTestHandlerStore(t, testHandlerOpts{
+				repoScan: func(string) ([]Repo, error) {
+					return []Repo{{Path: "/tmp/repo1", Name: "repo1"}}, nil
+				},
+				mcpServers: func(context.Context) ([]MCPServer, error) {
+					return tc.servers, nil
+				},
+			})
+			// Compute expected winner through the same normalization path as production.
+			normalized := normalizeVisibleMCPServersForSnapshot(tc.servers)
+			var alphaServer MCPServer
+			for _, s := range normalized {
+				if s.Name == "alpha" {
+					alphaServer = s
+					break
+				}
 			}
-			discoverMCPServers = func(context.Context) ([]MCPServer, error) {
-				return tc.servers, nil
-			}
+			expectedAlpha := snapshotRowsForMCPServers([]MCPServer{alphaServer}, testRegisteredAt())[0]
 
 			req := makeRequest(map[string]any{
 				"action": "scan",

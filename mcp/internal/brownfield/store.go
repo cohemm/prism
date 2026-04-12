@@ -186,15 +186,15 @@ func (s *Store) ensureMCPTableSchema() error {
 	if err != nil {
 		return err
 	}
-	if !ok {
-		if _, err := tx.Exec(fmt.Sprintf(`DROP TABLE IF EXISTS %s`, mcpSnapshotTableName)); err != nil {
-			return fmt.Errorf("drop %s: %w", mcpSnapshotTableName, err)
-		}
+	if ok {
+		// Schema already matches — no migration needed.
+		return nil
 	}
 
 	if _, err := tx.Exec(fmt.Sprintf(`
 DROP TABLE IF EXISTS %s;
-CREATE TABLE IF NOT EXISTS %s (
+DROP TABLE IF EXISTS %s;
+CREATE TABLE %s (
     name TEXT NOT NULL PRIMARY KEY CHECK (length(trim(name)) > 0),
     path TEXT,
     desc TEXT NOT NULL CHECK (length(trim(desc)) > 0),
@@ -202,7 +202,7 @@ CREATE TABLE IF NOT EXISTS %s (
     registered_at TIMESTAMP NOT NULL CHECK (length(trim(registered_at)) > 0)
 );
 CREATE INDEX IF NOT EXISTS %s ON %s (is_default);
-`, legacyMCPSnapshotTableName, mcpSnapshotTableName, mcpSnapshotIndexName, mcpSnapshotTableName)); err != nil {
+`, mcpSnapshotTableName, legacyMCPSnapshotTableName, mcpSnapshotTableName, mcpSnapshotIndexName, mcpSnapshotTableName)); err != nil {
 		return fmt.Errorf("ensure %s schema: %w", mcpSnapshotTableName, err)
 	}
 
