@@ -1012,6 +1012,7 @@ func resetStoreSingletonForTest(t *testing.T) {
 		}
 		store = previousStore
 		storeErr = previousErr
+		ResetInitStoreForTest()
 	})
 }
 

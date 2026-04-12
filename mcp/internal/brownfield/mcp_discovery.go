@@ -41,10 +41,10 @@ func DiscoverMCPServers(ctx context.Context) ([]MCPServer, error) {
 	} else {
 		servers, err = discoverClaudeMCPServers()
 	}
-	if err != nil {
-		return nil, err
-	}
-	return hydrateMCPServerDescriptions(ctx, servers), nil
+	// Hydrate even on partial success (err != nil but servers non-empty),
+	// so valid servers from successful config files are still included.
+	hydrated := hydrateMCPServerDescriptions(ctx, servers)
+	return hydrated, err
 }
 
 func discoverCodexMCPServers(ctx context.Context) ([]MCPServer, error) {

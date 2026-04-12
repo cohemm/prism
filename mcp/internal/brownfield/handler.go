@@ -131,10 +131,13 @@ func handleScan(ctx context.Context, args map[string]interface{}) (*mcp.CallTool
 		mcpErr = fmt.Errorf("mcp snapshot migration: %w", err)
 	}
 	if mcpErr == nil {
-		servers, err := discoverMCPServers(ctx)
-		if err != nil {
-			mcpErr = fmt.Errorf("mcp discovery: %w", err)
-		} else if _, err := store.ReplaceMCPsSnapshot(servers); err != nil {
+		servers, discoverErr := discoverMCPServers(ctx)
+		if discoverErr != nil {
+			mcpErr = fmt.Errorf("mcp discovery: %w", discoverErr)
+		}
+		// Store results even on partial discovery failure. When servers is empty
+		// (no error or all configs failed), ReplaceMCPsSnapshot clears stale rows.
+		if _, err := store.ReplaceMCPsSnapshot(servers); err != nil {
 			mcpErr = fmt.Errorf("mcp snapshot sync: %w", err)
 		} else {
 			storedMCPs, _ = store.ListMCPs()
