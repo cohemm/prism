@@ -66,22 +66,22 @@ This may take a moment...
 
 The scan response `text` already contains a pre-formatted numbered list with `[default]` markers. **Do NOT make any additional MCP calls to list or query repos.**
 
-**Display the repos in a plain-text 2-column grid** (NOT a markdown table). Use a code block so columns align. Example:
+**Display the results in a plain-text 2-column grid** (NOT a markdown table). Use a code block so columns align. Repos always appear first, MCP servers after. Example:
 
 ```
-Scan complete. 8 repositories registered.
+Scan complete. 4 repositories, 4 MCP servers registered.
 
- 1. repo-alpha                   5. repo-epsilon
- 2. repo-bravo *                 6. repo-foxtrot
- 3. repo-charlie                 7. repo-golf *
- 4. repo-delta                   8. repo-hotel
+ 1. (repo) repo-alpha *          5. (mcp) plugin:ouroboros
+ 2. (repo) repo-bravo *          6. (mcp) mcp-clickhouse
+ 3. (repo) repo-charlie          7. (mcp) notion
+ 4. (repo) repo-delta            8. (mcp) sentry
 ```
 
 Include `*` markers for defaults exactly as they appear in the scan response.
 
-**If no repos found**, show:
+**If no repos and no MCP servers found**, show:
 ```
-No GitHub repositories found in your home directory.
+No GitHub repositories or MCP servers found.
 ```
 Then stop.
 
