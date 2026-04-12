@@ -34,29 +34,33 @@ func setupTestBrownfieldDB(t *testing.T, repos []brownfield.Repo, defaultPaths [
 	defer db.Close()
 
 	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS brownfield_repos (
-			path TEXT PRIMARY KEY,
+		CREATE TABLE IF NOT EXISTS brownfield_entries (
+			type TEXT NOT NULL CHECK(type IN ('repo', 'mcp')),
+			key TEXT NOT NULL,
 			name TEXT NOT NULL,
 			desc TEXT,
+			path TEXT,
 			is_default BOOLEAN NOT NULL DEFAULT 0,
-			registered_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+			registered_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(type, key)
 		);
-		CREATE INDEX IF NOT EXISTS ix_brownfield_repos_is_default ON brownfield_repos (is_default);
+		CREATE INDEX IF NOT EXISTS ix_brownfield_entries_is_default ON brownfield_entries (is_default);
+		CREATE INDEX IF NOT EXISTS ix_brownfield_entries_type ON brownfield_entries (type);
 	`)
 	if err != nil {
 		t.Fatalf("create table: %v", err)
 	}
 
 	for _, r := range repos {
-		_, err := db.Exec("INSERT INTO brownfield_repos (path, name, desc) VALUES (?, ?, ?)",
-			r.Path, r.Name, r.Desc)
+		_, err := db.Exec("INSERT INTO brownfield_entries (type, key, name, desc, path) VALUES ('repo', ?, ?, ?, ?)",
+			r.Path, r.Name, r.Desc, r.Path)
 		if err != nil {
 			t.Fatalf("insert repo: %v", err)
 		}
 	}
 
 	for _, p := range defaultPaths {
-		_, err := db.Exec("UPDATE brownfield_repos SET is_default = 1 WHERE path = ?", p)
+		_, err := db.Exec("UPDATE brownfield_entries SET is_default = 1 WHERE type = 'repo' AND key = ?", p)
 		if err != nil {
 			t.Fatalf("set default: %v", err)
 		}
