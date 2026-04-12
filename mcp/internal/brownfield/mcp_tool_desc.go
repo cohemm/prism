@@ -12,7 +12,10 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-const mcpToolMetadataResolutionTimeout = 2 * time.Second
+const (
+	mcpToolMetadataResolutionTimeout      = 2 * time.Second
+	mcpToolMetadataResolutionTotalTimeout = 15 * time.Second
+)
 
 type mcpToolListingClient interface {
 	Initialize(context.Context, mcp.InitializeRequest) (*mcp.InitializeResult, error)
@@ -28,6 +31,9 @@ func hydrateMCPServerDescriptions(ctx context.Context, servers []MCPServer) []MC
 	if len(servers) == 0 {
 		return nil
 	}
+
+	totalCtx, totalCancel := context.WithTimeout(ctx, mcpToolMetadataResolutionTotalTimeout)
+	defer totalCancel()
 
 	hydrated := make([]MCPServer, len(servers))
 	copy(hydrated, servers)
@@ -46,7 +52,7 @@ func hydrateMCPServerDescriptions(ctx context.Context, servers []MCPServer) []MC
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			desc, err := resolveMCPServerToolMetadataDescription(ctx, hydrated[idx])
+			desc, err := resolveMCPServerToolMetadataDescription(totalCtx, hydrated[idx])
 			if err != nil {
 				return
 			}

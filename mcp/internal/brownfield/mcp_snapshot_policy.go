@@ -109,9 +109,6 @@ func compareMCPServerSnapshotCandidates(left, right MCPServer) int {
 	if cmp := strings.Compare(normalizeMCPDescription(leftName, left.Desc), normalizeMCPDescription(rightName, right.Desc)); cmp != 0 {
 		return cmp
 	}
-	if cmp := strings.Compare(strings.TrimSpace(left.Path), strings.TrimSpace(right.Path)); cmp != 0 {
-		return cmp
-	}
 	return strings.Compare(strings.TrimSpace(left.Desc), strings.TrimSpace(right.Desc))
 }
 

@@ -14,7 +14,12 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-func newTestHandlerStore(t *testing.T) *Store {
+type testHandlerOpts struct {
+	mcpServers func(context.Context) ([]MCPServer, error)
+	repoScan   func(string) ([]Repo, error)
+}
+
+func newTestHandlerStore(t *testing.T, opts ...testHandlerOpts) *Store {
 	t.Helper()
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
@@ -29,10 +34,22 @@ func newTestHandlerStore(t *testing.T) *Store {
 	t.Cleanup(func() { db.Close() })
 	SetStoreForTest(s)
 	t.Cleanup(func() { SetStoreForTest(nil) })
+
 	origScan := scanHomeForRepos
 	origDiscover := discoverMCPServers
+
 	scanHomeForRepos = ScanHomeForRepos
 	discoverMCPServers = func(context.Context) ([]MCPServer, error) { return nil, nil }
+
+	if len(opts) > 0 {
+		if opts[0].mcpServers != nil {
+			discoverMCPServers = opts[0].mcpServers
+		}
+		if opts[0].repoScan != nil {
+			scanHomeForRepos = opts[0].repoScan
+		}
+	}
+
 	t.Cleanup(func() {
 		scanHomeForRepos = origScan
 		discoverMCPServers = origDiscover
@@ -88,13 +105,14 @@ func TestHandlerScanFormat(t *testing.T) {
 }
 
 func TestHandlerScanNoReposFound(t *testing.T) {
-	s := newTestHandlerStore(t)
-	discoverMCPServers = func(context.Context) ([]MCPServer, error) {
-		return []MCPServer{
-			{Name: "alpha", Desc: ""},
-			{Name: "beta", Desc: ""},
-		}, nil
-	}
+	s := newTestHandlerStore(t, testHandlerOpts{
+		mcpServers: func(context.Context) ([]MCPServer, error) {
+			return []MCPServer{
+				{Name: "alpha", Desc: ""},
+				{Name: "beta", Desc: ""},
+			}, nil
+		},
+	})
 
 	home, err := os.UserHomeDir()
 	if err != nil {

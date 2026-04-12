@@ -115,10 +115,17 @@ func handleScan(ctx context.Context, args map[string]interface{}) (*mcp.CallTool
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("scan failed: %v", err)), nil
 	}
+
+	// Register repos first so MCP failures don't block repo registration.
+	_, bulkErr := store.BulkRegister(repos)
+
+	// NOTE: EnsureMCPSnapshotTableSchema and ReplaceMCPsSnapshot use separate
+	// mutex acquisitions. This is safe because the MCP server is single-process
+	// and scan requests are serialized. If concurrent scans are added later,
+	// these should be combined into a single transaction.
 	if err := store.EnsureMCPSnapshotTableSchema(); err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("mcp snapshot migration failed: %v", err)), nil
 	}
-
 	servers, err := discoverMCPServers(ctx)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("mcp scan failed: %v", err)), nil
@@ -130,8 +137,6 @@ func handleScan(ctx context.Context, args map[string]interface{}) (*mcp.CallTool
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("mcp snapshot list failed: %v", err)), nil
 	}
-
-	_, bulkErr := store.BulkRegister(repos)
 
 	// Fetch all repos and MCP snapshots for combined listing
 	allRepos, _, listErr := store.List(0, 0, false)
