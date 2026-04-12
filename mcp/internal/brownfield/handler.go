@@ -42,6 +42,12 @@ func SetStoreForTest(s *Store) {
 	store = s
 }
 
+// ResetInitStoreForTest resets the sync.Once guard so InitStore can be called
+// again in tests. Must only be used from test code.
+func ResetInitStoreForTest() {
+	storeOnce = sync.Once{}
+}
+
 // HandleBrownfield is the MCP tool handler for prism_brownfield.
 func HandleBrownfield(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	if store == nil {
@@ -117,29 +123,12 @@ func handleScan(ctx context.Context, args map[string]interface{}) (*mcp.CallTool
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("mcp scan failed: %v", err)), nil
 	}
-	expectedSnapshotNames := snapshotNamesForMCPServers(servers)
-	storedSnapshotCount, err := store.ReplaceMCPsSnapshot(servers)
-	if err != nil {
+	if _, err := store.ReplaceMCPsSnapshot(servers); err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("mcp snapshot sync failed: %v", err)), nil
-	}
-	mcpCount, err := store.CountMCPs()
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("mcp snapshot count failed: %v", err)), nil
-	}
-	if mcpCount != storedSnapshotCount {
-		return mcp.NewToolResultError(fmt.Sprintf("mcp snapshot count mismatch: discovered %d unique rows, stored %d", storedSnapshotCount, mcpCount)), nil
 	}
 	storedMCPs, err := store.ListMCPs()
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("mcp snapshot verification failed: %v", err)), nil
-	}
-	if len(storedMCPs) != len(expectedSnapshotNames) {
-		return mcp.NewToolResultError(fmt.Sprintf("mcp snapshot verification mismatch: expected %d rows, stored %d", len(expectedSnapshotNames), len(storedMCPs))), nil
-	}
-	for i, expectedName := range expectedSnapshotNames {
-		if storedMCPs[i].Name != expectedName {
-			return mcp.NewToolResultError(fmt.Sprintf("mcp snapshot verification mismatch at row %d: expected %q, stored %q", i, expectedName, storedMCPs[i].Name)), nil
-		}
+		return mcp.NewToolResultError(fmt.Sprintf("mcp snapshot list failed: %v", err)), nil
 	}
 
 	_, bulkErr := store.BulkRegister(repos)

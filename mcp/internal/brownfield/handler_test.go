@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 
 	prismconfig "github.com/heechul/prism-mcp/internal/config"
@@ -968,11 +967,10 @@ func resetStoreSingletonForTest(t *testing.T) {
 
 	previousStore := store
 	previousErr := storeErr
-	previousOnce := storeOnce
 
 	store = nil
 	storeErr = nil
-	storeOnce = sync.Once{}
+	ResetInitStoreForTest()
 
 	t.Cleanup(func() {
 		if store != nil {
@@ -980,7 +978,6 @@ func resetStoreSingletonForTest(t *testing.T) {
 		}
 		store = previousStore
 		storeErr = previousErr
-		storeOnce = previousOnce
 	})
 }
 

@@ -81,40 +81,57 @@ func discoverClaudeMCPServers() ([]MCPServer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve home dir: %w", err)
 	}
-	paths := []string{
-		filepath.Join(".claude-plugin", ".mcp.json"),
-		".mcp.json",
-		filepath.Join(home, ".claude", "mcp.json"),
+
+	// Only discover MCPs from absolute, well-known paths:
+	// 1. User-level: ~/.claude/mcp.json
+	// 2. Installed plugins: ~/.claude/plugins/marketplaces/*/.mcp.json
+	var servers []MCPServer
+
+	// User-level MCP config
+	userConfig := filepath.Join(home, ".claude", "mcp.json")
+	if s, err := readMCPServersFromConfig(userConfig); err == nil {
+		servers = append(servers, s...)
+	} else if !os.IsNotExist(err) {
+		return nil, err
 	}
 
-	// Preserve every visible `/mcp` entry exactly as discovered here. Duplicate
-	// names are intentionally collapsed later by the snapshot policy so one
-	// documented survivor rule governs persistence across all runtimes.
-	var servers []MCPServer
-	for _, path := range paths {
-		cfg, err := readClaudeMCPConfig(path)
+	// Plugin MCPs from installed marketplace plugins
+	pluginPattern := filepath.Join(home, ".claude", "plugins", "marketplaces", "*", ".mcp.json")
+	pluginPaths, _ := filepath.Glob(pluginPattern)
+	sort.Strings(pluginPaths)
+	for _, path := range pluginPaths {
+		s, err := readMCPServersFromConfig(path)
 		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return nil, err
+			continue
 		}
-		names := make([]string, 0, len(cfg.MCPServers))
-		for name := range cfg.MCPServers {
-			names = append(names, name)
-		}
-		sort.Strings(names)
-		for _, name := range names {
-			server := cfg.MCPServers[name]
-			servers = append(servers, MCPServer{
-				Name:         name,
-				Path:         deriveCommandPath(server.Command),
-				Desc:         "",
-				Visible:      true,
-				VisibilityOK: true,
-				Command:      server.Command,
-			})
-		}
+		servers = append(servers, s...)
+	}
+
+	return servers, nil
+}
+
+func readMCPServersFromConfig(path string) ([]MCPServer, error) {
+	cfg, err := readClaudeMCPConfig(path)
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(cfg.MCPServers))
+	for name := range cfg.MCPServers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	servers := make([]MCPServer, 0, len(names))
+	for _, name := range names {
+		server := cfg.MCPServers[name]
+		servers = append(servers, MCPServer{
+			Name:         name,
+			Path:         deriveCommandPath(server.Command),
+			Desc:         "",
+			Visible:      true,
+			VisibilityOK: true,
+			Command:      server.Command,
+		})
 	}
 	return servers, nil
 }

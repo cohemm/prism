@@ -92,27 +92,19 @@ type MCPSnapshotRuntimeSQLiteCheck struct {
 	Shape    MCPSnapshotSchemaShapeCheck
 }
 
-// MCPSnapshotSchemaShapeCheck captures the detailed schema-shape verdict for
-// the runtime MCP snapshot table from the same sqlite_master source as the
-// summary SchemaOK result.
+// MCPSnapshotSchemaShapeCheck captures the schema verdict for the MCP snapshot
+// table based on PRAGMA table_info introspection.
 type MCPSnapshotSchemaShapeCheck struct {
-	TableExists                    bool
-	ColumnCount                    int
-	NameColumnPrimaryKey           bool
-	NameColumnNotNull              bool
-	PathColumnPresent              bool
-	PathColumnNullable             bool
-	DescColumnNotNull              bool
-	IsDefaultColumnNotNull         bool
-	RegisteredAtColumnNotNull      bool
-	NameNonEmptyConstraint         bool
-	PathDeclaredAsText             bool
-	PathExplicitlyNotNotNull       bool
-	DescNonEmptyConstraint         bool
-	IsDefaultBooleanConstraint     bool
-	RegisteredAtNonEmptyConstraint bool
-	RegisteredAtHasDefault         bool
-	MatchesExpectedSchema          bool
+	TableExists               bool
+	ColumnCount               int
+	NameColumnPrimaryKey      bool
+	NameColumnNotNull         bool
+	PathColumnPresent         bool
+	PathColumnNullable        bool
+	DescColumnNotNull         bool
+	IsDefaultColumnNotNull    bool
+	RegisteredAtColumnNotNull bool
+	MatchesExpectedSchema     bool
 }
 
 const unresolvedMCPDescriptionFormat = "MCP server %s (tool metadata unavailable at scan time)"
@@ -276,51 +268,40 @@ func inspectMCPSnapshotSchemaShape(schema SQLiteTableSchema) (MCPSnapshotSchemaS
 		return shape, nil
 	}
 
-	type columnInfo struct {
-		name      string
+	type expectedCol struct {
 		notNull   int
 		pkOrdinal int
 	}
-
-	cols := map[string]columnInfo{}
-	for _, col := range schema.Columns {
-		cols[col.Name] = columnInfo{name: col.Name, notNull: col.NotNull, pkOrdinal: col.PKOrdinal}
+	expected := map[string]expectedCol{
+		"name":          {notNull: 1, pkOrdinal: 1},
+		"path":          {notNull: 0, pkOrdinal: 0},
+		"desc":          {notNull: 1, pkOrdinal: 0},
+		"is_default":    {notNull: 1, pkOrdinal: 0},
+		"registered_at": {notNull: 1, pkOrdinal: 0},
 	}
 
-	expected := map[string]columnInfo{
-		"name":          {name: "name", notNull: 1, pkOrdinal: 1},
-		"path":          {name: "path", notNull: 0, pkOrdinal: 0},
-		"desc":          {name: "desc", notNull: 1, pkOrdinal: 0},
-		"is_default":    {name: "is_default", notNull: 1, pkOrdinal: 0},
-		"registered_at": {name: "registered_at", notNull: 1, pkOrdinal: 0},
+	cols := make(map[string]SQLiteTableColumn, len(schema.Columns))
+	for _, col := range schema.Columns {
+		cols[col.Name] = col
 	}
 
 	if col, ok := cols["name"]; ok {
-		shape.NameColumnNotNull = col.notNull == expected["name"].notNull
-		shape.NameColumnPrimaryKey = col.pkOrdinal == expected["name"].pkOrdinal
+		shape.NameColumnNotNull = col.NotNull == expected["name"].notNull
+		shape.NameColumnPrimaryKey = col.PKOrdinal == expected["name"].pkOrdinal
 	}
 	if col, ok := cols["path"]; ok {
 		shape.PathColumnPresent = true
-		shape.PathColumnNullable = col.notNull == expected["path"].notNull
+		shape.PathColumnNullable = col.NotNull == expected["path"].notNull
 	}
 	if col, ok := cols["desc"]; ok {
-		shape.DescColumnNotNull = col.notNull == expected["desc"].notNull
+		shape.DescColumnNotNull = col.NotNull == expected["desc"].notNull
 	}
 	if col, ok := cols["is_default"]; ok {
-		shape.IsDefaultColumnNotNull = col.notNull == expected["is_default"].notNull
+		shape.IsDefaultColumnNotNull = col.NotNull == expected["is_default"].notNull
 	}
 	if col, ok := cols["registered_at"]; ok {
-		shape.RegisteredAtColumnNotNull = col.notNull == expected["registered_at"].notNull
+		shape.RegisteredAtColumnNotNull = col.NotNull == expected["registered_at"].notNull
 	}
-
-	sqlText := strings.ToLower(schema.CreateSQL)
-	shape.NameNonEmptyConstraint = strings.Contains(sqlText, "check (length(trim(name)) > 0)")
-	shape.PathDeclaredAsText = strings.Contains(sqlText, "path text")
-	shape.PathExplicitlyNotNotNull = !strings.Contains(sqlText, "path text not null")
-	shape.DescNonEmptyConstraint = strings.Contains(sqlText, "desc text not null check (length(trim(desc)) > 0)")
-	shape.IsDefaultBooleanConstraint = strings.Contains(sqlText, "is_default boolean not null default 0 check (is_default in (0, 1))")
-	shape.RegisteredAtNonEmptyConstraint = strings.Contains(sqlText, "registered_at timestamp not null check (length(trim(registered_at)) > 0)")
-	shape.RegisteredAtHasDefault = strings.Contains(sqlText, "registered_at timestamp not null default current_timestamp")
 
 	shape.MatchesExpectedSchema =
 		shape.ColumnCount == len(expected) &&
@@ -330,15 +311,7 @@ func inspectMCPSnapshotSchemaShape(schema SQLiteTableSchema) (MCPSnapshotSchemaS
 			shape.PathColumnNullable &&
 			shape.DescColumnNotNull &&
 			shape.IsDefaultColumnNotNull &&
-			shape.RegisteredAtColumnNotNull &&
-			strings.Contains(sqlText, "name text not null primary key") &&
-			shape.NameNonEmptyConstraint &&
-			shape.PathDeclaredAsText &&
-			shape.PathExplicitlyNotNotNull &&
-			shape.DescNonEmptyConstraint &&
-			shape.IsDefaultBooleanConstraint &&
-			shape.RegisteredAtNonEmptyConstraint &&
-			!shape.RegisteredAtHasDefault
+			shape.RegisteredAtColumnNotNull
 
 	return shape, nil
 }

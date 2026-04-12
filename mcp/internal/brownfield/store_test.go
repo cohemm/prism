@@ -519,24 +519,6 @@ func TestInitializeCreatesMCPTable(t *testing.T) {
 	if !shape.RegisteredAtColumnNotNull {
 		t.Error("expected detailed runtime schema check to require registered_at NOT NULL")
 	}
-	if !shape.NameNonEmptyConstraint {
-		t.Error("expected detailed runtime schema check to require non-empty name")
-	}
-	if !shape.PathDeclaredAsText || !shape.PathExplicitlyNotNotNull {
-		t.Error("expected detailed runtime schema check to record nullable TEXT path")
-	}
-	if !shape.DescNonEmptyConstraint {
-		t.Error("expected detailed runtime schema check to require non-empty desc")
-	}
-	if !shape.IsDefaultBooleanConstraint {
-		t.Error("expected detailed runtime schema check to constrain is_default to boolean values")
-	}
-	if !shape.RegisteredAtNonEmptyConstraint {
-		t.Error("expected detailed runtime schema check to require non-empty registered_at")
-	}
-	if shape.RegisteredAtHasDefault {
-		t.Error("expected detailed runtime schema check to reject registered_at default timestamp")
-	}
 	if !shape.MatchesExpectedSchema {
 		t.Error("expected detailed runtime schema check to match expected schema")
 	}

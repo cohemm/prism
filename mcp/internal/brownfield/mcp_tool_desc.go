@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	mcpclient "github.com/mark3labs/mcp-go/client"
@@ -31,15 +32,34 @@ func hydrateMCPServerDescriptions(ctx context.Context, servers []MCPServer) []MC
 	hydrated := make([]MCPServer, len(servers))
 	copy(hydrated, servers)
 
+	type result struct {
+		index int
+		desc  string
+	}
+	results := make(chan result, len(hydrated))
+
+	var wg sync.WaitGroup
 	for i := range hydrated {
 		if strings.TrimSpace(hydrated[i].Desc) != "" {
 			continue
 		}
-		desc, err := resolveMCPServerToolMetadataDescription(ctx, hydrated[i])
-		if err != nil {
-			continue
-		}
-		hydrated[i].Desc = desc
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			desc, err := resolveMCPServerToolMetadataDescription(ctx, hydrated[idx])
+			if err != nil {
+				return
+			}
+			results <- result{index: idx, desc: desc}
+		}(i)
+	}
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	for r := range results {
+		hydrated[r.index].Desc = r.desc
 	}
 	return hydrated
 }

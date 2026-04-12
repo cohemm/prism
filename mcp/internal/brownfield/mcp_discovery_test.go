@@ -10,11 +10,7 @@ import (
 )
 
 func TestDiscoverClaudeMCPServersPreservesDuplicateVisibleNamesUntilSnapshotNormalization(t *testing.T) {
-	projectDir := t.TempDir()
 	homeDir := filepath.Join(t.TempDir(), "home")
-	if err := os.MkdirAll(filepath.Join(homeDir, ".claude"), 0755); err != nil {
-		t.Fatalf("mkdir home .claude: %v", err)
-	}
 
 	writeJSON := func(path, body string) {
 		t.Helper()
@@ -26,31 +22,21 @@ func TestDiscoverClaudeMCPServersPreservesDuplicateVisibleNamesUntilSnapshotNorm
 		}
 	}
 
-	writeJSON(filepath.Join(projectDir, ".mcp.json"), `{
-  "mcpServers": {
-    "dup": {"command": "/tmp/alpha"},
-    "project-only": {"command": "/tmp/project-only"}
-  }
-}`)
+	// User-level config with "dup" and "home-only"
 	writeJSON(filepath.Join(homeDir, ".claude", "mcp.json"), `{
   "mcpServers": {
     "dup": {"command": "/tmp/zeta"},
     "home-only": {"command": "/tmp/home-only"}
   }
 }`)
+	// Plugin config with "dup" and "plugin-only"
+	writeJSON(filepath.Join(homeDir, ".claude", "plugins", "marketplaces", "test-plugin", ".mcp.json"), `{
+  "mcpServers": {
+    "dup": {"command": "/tmp/alpha"},
+    "plugin-only": {"command": "/tmp/plugin-only"}
+  }
+}`)
 
-	originalWD, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(projectDir); err != nil {
-		t.Fatalf("chdir project dir: %v", err)
-	}
-	t.Cleanup(func() {
-		if err := os.Chdir(originalWD); err != nil {
-			t.Fatalf("restore working directory: %v", err)
-		}
-	})
 	t.Setenv("HOME", homeDir)
 
 	servers, err := discoverClaudeMCPServers()
@@ -70,8 +56,9 @@ func TestDiscoverClaudeMCPServersPreservesDuplicateVisibleNamesUntilSnapshotNorm
 	if len(dupPaths) != 2 {
 		t.Fatalf("duplicate visible entries = %v, want both dup candidates preserved", dupPaths)
 	}
-	if dupPaths[0] != "/tmp/alpha" || dupPaths[1] != "/tmp/zeta" {
-		t.Fatalf("dup paths = %v, want [/tmp/alpha /tmp/zeta] in config discovery order", dupPaths)
+	// User config comes first, then plugin
+	if dupPaths[0] != "/tmp/zeta" || dupPaths[1] != "/tmp/alpha" {
+		t.Fatalf("dup paths = %v, want [/tmp/zeta /tmp/alpha] in discovery order (user then plugin)", dupPaths)
 	}
 
 	snapshots := snapshotRowsForMCPServers(servers, testRegisteredAt())

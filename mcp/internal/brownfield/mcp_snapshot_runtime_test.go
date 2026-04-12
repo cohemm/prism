@@ -103,16 +103,23 @@ func runtimeSQLiteSnapshotRowByName(t *testing.T, s *Store, name string) MCPServ
 	t.Helper()
 
 	metadata := runtimeSQLiteTableMetadata(t, s, mcpSnapshotTableName)
-	var row MCPServerSnapshot
+	var (
+		row    MCPServerSnapshot
+		dbPath sql.NullString
+	)
 	if err := metadata.DB.QueryRow(`
 		SELECT name, path, desc, is_default, registered_at
 		FROM mcp_server_snapshot
 		WHERE name = ?
-	`, name).Scan(&row.Name, &row.Path, &row.Desc, &row.IsDefault, &row.RegisteredAt); err != nil {
+	`, name).Scan(&row.Name, &dbPath, &row.Desc, &row.IsDefault, &row.RegisteredAt); err != nil {
 		if err == sql.ErrNoRows {
 			t.Fatalf("runtime sqlite snapshot row %q not found", name)
 		}
 		t.Fatalf("query runtime snapshot row %q: %v", name, err)
+	}
+	if dbPath.Valid {
+		p := dbPath.String
+		row.Path = &p
 	}
 	return row
 }
