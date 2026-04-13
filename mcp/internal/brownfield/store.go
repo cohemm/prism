@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -45,6 +46,18 @@ type MCPServerSnapshot struct {
 	RegisteredAt string  `json:"registered_at"`
 }
 
+// Entry represents a unified brownfield entry (repo or MCP server).
+type Entry struct {
+	RowID        int64  `json:"rowid"`
+	Type         string `json:"type"`           // "repo" or "mcp"
+	Key          string `json:"key"`            // repo: path, mcp: name
+	Name         string `json:"name"`
+	Desc         string `json:"desc,omitempty"`
+	Path         string `json:"path,omitempty"` // repo: same as key, mcp: optional
+	IsDefault    bool   `json:"is_default"`
+	RegisteredAt string `json:"registered_at"`
+}
+
 // Store manages brownfield repository persistence in SQLite.
 type Store struct {
 	mu sync.Mutex
@@ -82,37 +95,13 @@ type RuntimeSQLiteTableMetadata struct {
 	Table        SQLiteTableSchema
 }
 
-// MCPSnapshotRuntimeSQLiteCheck captures the authoritative runtime SQLite
-// inspection result for the MCP snapshot table. Both summary-style schema
-// verification and detailed evaluator assertions should consume this shared
-// result so they cannot drift across different DB files or lookup paths.
-type MCPSnapshotRuntimeSQLiteCheck struct {
-	Metadata RuntimeSQLiteTableMetadata
-	SchemaOK bool
-	Shape    MCPSnapshotSchemaShapeCheck
-}
-
-// MCPSnapshotSchemaShapeCheck captures the schema verdict for the MCP snapshot
-// table based on PRAGMA table_info introspection.
-type MCPSnapshotSchemaShapeCheck struct {
-	TableExists               bool
-	ColumnCount               int
-	NameColumnPrimaryKey      bool
-	NameColumnNotNull         bool
-	PathColumnPresent         bool
-	PathColumnNullable        bool
-	DescColumnNotNull         bool
-	IsDefaultColumnNotNull    bool
-	RegisteredAtColumnNotNull bool
-	MatchesExpectedSchema     bool
-}
-
 const unresolvedMCPDescriptionFormat = "MCP server %s (tool metadata unavailable at scan time)"
 
 const (
-	mcpSnapshotTableName       = "mcp_server_snapshot"
-	mcpSnapshotIndexName       = "ix_mcp_server_snapshot_is_default"
+	entriesTableName           = "brownfield_entries"
+	legacyRepoTableName        = "brownfield_repos"
 	legacyMCPSnapshotTableName = "brownfield_mcps"
+	mcpSnapshotTableName       = "mcp_server_snapshot"
 )
 
 // NewStore opens (or creates) the brownfield SQLite database at the shared
@@ -150,170 +139,83 @@ func NewStoreAt(dbPath string) (*Store, error) {
 }
 
 func (s *Store) initialize() error {
-	repoSchema := `
-CREATE TABLE IF NOT EXISTS brownfield_repos (
-    path TEXT PRIMARY KEY,
+	entriesSchema := `
+CREATE TABLE IF NOT EXISTS brownfield_entries (
+    type TEXT NOT NULL CHECK(type IN ('repo', 'mcp')),
+    key TEXT NOT NULL,
     name TEXT NOT NULL,
     desc TEXT,
+    path TEXT,
     is_default BOOLEAN NOT NULL DEFAULT 0,
-    registered_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    registered_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(type, key)
 );
-CREATE INDEX IF NOT EXISTS ix_brownfield_repos_is_default ON brownfield_repos (is_default);
+CREATE INDEX IF NOT EXISTS ix_brownfield_entries_is_default ON brownfield_entries (is_default);
+CREATE INDEX IF NOT EXISTS ix_brownfield_entries_type ON brownfield_entries (type);
 `
-	if _, err := s.db.Exec(repoSchema); err != nil {
+	if _, err := s.db.Exec(entriesSchema); err != nil {
 		return err
 	}
-	return s.ensureMCPTableSchema()
+	return s.migrateFromLegacyTables()
 }
 
-// EnsureMCPSnapshotTableSchema reruns the MCP snapshot migration against the
-// live runtime SQLite handle. Scan handlers call this immediately before MCP
-// snapshot writes so older runtime DB files are upgraded in place.
-func (s *Store) EnsureMCPSnapshotTableSchema() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.ensureMCPTableSchema()
-}
-
-func (s *Store) ensureMCPTableSchema() error {
+func (s *Store) migrateFromLegacyTables() error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	ok, err := mcpSnapshotTableMatches(tx)
-	if err != nil {
+	migrated := false
+
+	// Migrate from brownfield_repos if it exists
+	if repoExists, err := sqliteTableExists(tx, legacyRepoTableName); err != nil {
 		return err
+	} else if repoExists {
+		if _, err := tx.Exec(`
+			INSERT OR IGNORE INTO brownfield_entries (type, key, name, desc, path, is_default, registered_at)
+			SELECT 'repo', path, name, desc, path, is_default, registered_at
+			FROM brownfield_repos
+		`); err != nil {
+			return fmt.Errorf("migrate repos: %w", err)
+		}
+		if _, err := tx.Exec(`DROP TABLE brownfield_repos`); err != nil {
+			return fmt.Errorf("drop legacy repo table: %w", err)
+		}
+		migrated = true
 	}
-	if ok {
-		// Schema already matches — no migration needed. defer handles rollback.
+
+	// Migrate from mcp_server_snapshot if it exists
+	if mcpExists, err := sqliteTableExists(tx, mcpSnapshotTableName); err != nil {
+		return err
+	} else if mcpExists {
+		if _, err := tx.Exec(`
+			INSERT OR IGNORE INTO brownfield_entries (type, key, name, desc, path, is_default, registered_at)
+			SELECT 'mcp', name, name, desc, path, 0, registered_at
+			FROM mcp_server_snapshot
+		`); err != nil {
+			return fmt.Errorf("migrate mcps: %w", err)
+		}
+		if _, err := tx.Exec(`DROP TABLE mcp_server_snapshot`); err != nil {
+			return fmt.Errorf("drop legacy mcp table: %w", err)
+		}
+		migrated = true
+	}
+
+	// Also drop the legacy brownfield_mcps table if it exists
+	if legacyExists, err := sqliteTableExists(tx, legacyMCPSnapshotTableName); err != nil {
+		return err
+	} else if legacyExists {
+		if _, err := tx.Exec(fmt.Sprintf(`DROP TABLE %s`, legacyMCPSnapshotTableName)); err != nil {
+			return fmt.Errorf("drop legacy mcps table: %w", err)
+		}
+		migrated = true
+	}
+
+	if !migrated {
 		return nil
 	}
-
-	if _, err := tx.Exec(fmt.Sprintf(`
-DROP TABLE IF EXISTS %s;
-DROP TABLE IF EXISTS %s;
-CREATE TABLE %s (
-    name TEXT NOT NULL PRIMARY KEY CHECK (length(trim(name)) > 0),
-    path TEXT,
-    desc TEXT NOT NULL CHECK (length(trim(desc)) > 0),
-    is_default BOOLEAN NOT NULL DEFAULT 0 CHECK (is_default IN (0, 1)),
-    registered_at TIMESTAMP NOT NULL CHECK (length(trim(registered_at)) > 0)
-);
-CREATE INDEX IF NOT EXISTS %s ON %s (is_default);
-`, mcpSnapshotTableName, legacyMCPSnapshotTableName, mcpSnapshotTableName, mcpSnapshotIndexName, mcpSnapshotTableName)); err != nil {
-		return fmt.Errorf("ensure %s schema: %w", mcpSnapshotTableName, err)
-	}
-
 	return tx.Commit()
-}
-
-// VerifyMCPSnapshotTableSchema checks the live SQLite schema for the MCP
-// snapshot table. Callers should use this for evaluator-facing schema checks so
-// schema existence/results come from the same SQLite source of truth as the
-// migration logic.
-func (s *Store) VerifyMCPSnapshotTableSchema() error {
-	check, err := s.RuntimeSQLiteMCPSnapshotCheck()
-	if err != nil {
-		return err
-	}
-	if !check.SchemaOK {
-		return fmt.Errorf("%s schema does not match expected SQLite snapshot schema", mcpSnapshotTableName)
-	}
-	return nil
-}
-
-// RuntimeSQLiteMCPSnapshotCheck returns the runtime SQLite metadata plus the
-// canonical schema verdict for the MCP snapshot table from the same migrated
-// database instance used by scans.
-func (s *Store) RuntimeSQLiteMCPSnapshotCheck() (MCPSnapshotRuntimeSQLiteCheck, error) {
-	metadata, err := s.RuntimeSQLiteTableMetadata(mcpSnapshotTableName)
-	if err != nil {
-		return MCPSnapshotRuntimeSQLiteCheck{}, err
-	}
-	shape, err := inspectMCPSnapshotSchemaShape(metadata.Table)
-	if err != nil {
-		return MCPSnapshotRuntimeSQLiteCheck{}, err
-	}
-	return MCPSnapshotRuntimeSQLiteCheck{
-		Metadata: metadata,
-		SchemaOK: shape.MatchesExpectedSchema,
-		Shape:    shape,
-	}, nil
-}
-
-func mcpSnapshotTableMatches(tx *sql.Tx) (bool, error) {
-	schema, err := sqliteTableSchema(tx, mcpSnapshotTableName)
-	if err != nil {
-		return false, err
-	}
-	return mcpSnapshotTableMatchesSchema(schema)
-}
-
-func mcpSnapshotTableMatchesSchema(schema SQLiteTableSchema) (bool, error) {
-	shape, err := inspectMCPSnapshotSchemaShape(schema)
-	if err != nil {
-		return false, err
-	}
-	return shape.MatchesExpectedSchema, nil
-}
-
-func inspectMCPSnapshotSchemaShape(schema SQLiteTableSchema) (MCPSnapshotSchemaShapeCheck, error) {
-	shape := MCPSnapshotSchemaShapeCheck{
-		TableExists: schema.Exists,
-		ColumnCount: len(schema.Columns),
-	}
-	if !schema.Exists {
-		return shape, nil
-	}
-
-	type expectedCol struct {
-		notNull   int
-		pkOrdinal int
-	}
-	expected := map[string]expectedCol{
-		"name":          {notNull: 1, pkOrdinal: 1},
-		"path":          {notNull: 0, pkOrdinal: 0},
-		"desc":          {notNull: 1, pkOrdinal: 0},
-		"is_default":    {notNull: 1, pkOrdinal: 0},
-		"registered_at": {notNull: 1, pkOrdinal: 0},
-	}
-
-	cols := make(map[string]SQLiteTableColumn, len(schema.Columns))
-	for _, col := range schema.Columns {
-		cols[col.Name] = col
-	}
-
-	if col, ok := cols["name"]; ok {
-		shape.NameColumnNotNull = col.NotNull == expected["name"].notNull
-		shape.NameColumnPrimaryKey = col.PKOrdinal == expected["name"].pkOrdinal
-	}
-	if col, ok := cols["path"]; ok {
-		shape.PathColumnPresent = true
-		shape.PathColumnNullable = col.NotNull == expected["path"].notNull
-	}
-	if col, ok := cols["desc"]; ok {
-		shape.DescColumnNotNull = col.NotNull == expected["desc"].notNull
-	}
-	if col, ok := cols["is_default"]; ok {
-		shape.IsDefaultColumnNotNull = col.NotNull == expected["is_default"].notNull
-	}
-	if col, ok := cols["registered_at"]; ok {
-		shape.RegisteredAtColumnNotNull = col.NotNull == expected["registered_at"].notNull
-	}
-
-	shape.MatchesExpectedSchema =
-		shape.ColumnCount == len(expected) &&
-			shape.NameColumnPrimaryKey &&
-			shape.NameColumnNotNull &&
-			shape.PathColumnPresent &&
-			shape.PathColumnNullable &&
-			shape.DescColumnNotNull &&
-			shape.IsDefaultColumnNotNull &&
-			shape.RegisteredAtColumnNotNull
-
-	return shape, nil
 }
 
 // SQLiteTableExists checks sqlite_master for the named table on the current
@@ -334,8 +236,7 @@ func (s *Store) SQLiteTableSchema(name string) (SQLiteTableSchema, error) {
 
 // RuntimeSQLiteTableMetadata returns the active database handle plus
 // sqlite_master/PRAGMA-derived schema state for one table from the current
-// Store connection. Evaluator-facing checks should use this helper so they
-// inspect the same runtime SQLite source as the implementation.
+// Store connection.
 func (s *Store) RuntimeSQLiteTableMetadata(name string) (RuntimeSQLiteTableMetadata, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -458,16 +359,18 @@ func normalizeSQLiteIdentifier(name string) (string, error) {
 	return tableName, nil
 }
 
+// --- Entry CRUD ---
+
 // Register inserts or updates a single repository.
 func (s *Store) Register(path, name, desc string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_, err := s.db.Exec(`
-		INSERT INTO brownfield_repos (path, name, desc) VALUES (?, ?, ?)
-		ON CONFLICT(path) DO UPDATE SET
-			name = COALESCE(NULLIF(excluded.name, ''), brownfield_repos.name),
-			desc = COALESCE(NULLIF(excluded.desc, ''), brownfield_repos.desc)
-	`, path, name, desc)
+		INSERT INTO brownfield_entries (type, key, name, desc, path) VALUES ('repo', ?, ?, ?, ?)
+		ON CONFLICT(type, key) DO UPDATE SET
+			name = COALESCE(NULLIF(excluded.name, ''), brownfield_entries.name),
+			desc = COALESCE(NULLIF(excluded.desc, ''), brownfield_entries.desc)
+	`, path, name, desc, path)
 	return err
 }
 
@@ -482,21 +385,19 @@ func (s *Store) BulkRegister(repos []Repo) (int, error) {
 	defer tx.Rollback()
 
 	stmt, err := tx.Prepare(`
-		INSERT INTO brownfield_repos (path, name) VALUES (?, ?)
-		ON CONFLICT(path) DO UPDATE SET
-			name = COALESCE(NULLIF(excluded.name, ''), brownfield_repos.name)
+		INSERT INTO brownfield_entries (type, key, name, path) VALUES ('repo', ?, ?, ?)
+		ON CONFLICT(type, key) DO UPDATE SET
+			name = COALESCE(NULLIF(excluded.name, ''), brownfield_entries.name)
 	`)
 	if err != nil {
 		return 0, err
 	}
 	defer stmt.Close()
 
-	// Partial success by design: UPSERT means most failures are unusual (I/O, corruption).
-	// Individual row errors are collected but don't abort the batch.
 	count := 0
 	var errs []string
 	for _, r := range repos {
-		if _, err := stmt.Exec(r.Path, r.Name); err != nil {
+		if _, err := stmt.Exec(r.Path, r.Name, r.Path); err != nil {
 			errs = append(errs, fmt.Sprintf("register %s: %v", r.Path, err))
 			continue
 		}
@@ -511,25 +412,292 @@ func (s *Store) BulkRegister(repos []Repo) (int, error) {
 	return count, nil
 }
 
-// ReplaceMCPsSnapshot replaces the MCP snapshot with the provided rows.
-// Each call is authoritative for that scan: rows from prior scans are deleted
-// before the current normalized snapshot is inserted, so servers no longer
-// visible in `/mcp` do not survive a rescan.
-func (s *Store) ReplaceMCPsSnapshot(servers []MCPServer) (int, error) {
+// SyncMCPEntries synchronizes MCP entries using diff semantics:
+// existing entries are preserved (rowid stable), new entries are inserted,
+// and entries absent from the scan are deleted.
+func (s *Store) SyncMCPEntries(servers []MCPServer) (int, error) {
 	registeredAt := mcpSnapshotTimestamp()
-	snapshots := snapshotRowsForMCPServers(servers, registeredAt)
-	if err := s.ReplaceMCPs(snapshots); err != nil {
+	normalized := normalizeVisibleMCPServersForSnapshot(servers)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	tx, err := s.db.Begin()
+	if err != nil {
 		return 0, err
 	}
-	return len(snapshots), nil
+	defer tx.Rollback()
+
+	// Get existing MCP keys
+	existingKeys := make(map[string]bool)
+	rows, err := tx.Query(`SELECT key FROM brownfield_entries WHERE type = 'mcp'`)
+	if err != nil {
+		return 0, err
+	}
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		existingKeys[key] = true
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	// Build scan key set from normalized servers (names already trimmed by normalizeVisibleMCPServersForSnapshot)
+	scanServers := make(map[string]MCPServer, len(normalized))
+	for _, server := range normalized {
+		scanServers[server.Name] = server
+	}
+
+	// Delete stale entries (in DB but not in scan)
+	for key := range existingKeys {
+		if _, exists := scanServers[key]; !exists {
+			if _, err := tx.Exec(`DELETE FROM brownfield_entries WHERE type = 'mcp' AND key = ?`, key); err != nil {
+				return 0, fmt.Errorf("delete stale mcp %s: %w", key, err)
+			}
+		}
+	}
+
+	// Insert new entries in sorted order for deterministic rowid assignment
+	sortedNames := make([]string, 0, len(scanServers))
+	for name := range scanServers {
+		sortedNames = append(sortedNames, name)
+	}
+	sort.Strings(sortedNames)
+
+	for _, name := range sortedNames {
+		server := scanServers[name]
+		desc := normalizeMCPDescription(name, server.Desc)
+		pathVal := normalizeOptionalPath(approvedSnapshotPath(server))
+		if existingKeys[name] {
+			// Update desc/path for existing entries (preserves rowid and is_default)
+			if _, err := tx.Exec(`
+				UPDATE brownfield_entries SET desc = ?, path = ?, registered_at = ?
+				WHERE type = 'mcp' AND key = ?
+			`, desc, pathVal, registeredAt, name); err != nil {
+				return 0, fmt.Errorf("update mcp %s: %w", name, err)
+			}
+			continue
+		}
+		if _, err := tx.Exec(`
+			INSERT INTO brownfield_entries (type, key, name, desc, path, is_default, registered_at)
+			VALUES ('mcp', ?, ?, ?, ?, 0, ?)
+		`, name, name, desc, pathVal, registeredAt); err != nil {
+			return 0, fmt.Errorf("insert mcp %s: %w", name, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return len(scanServers), nil
 }
 
+// ListEntries returns all entries (repo + mcp) with unified numbering.
+func (s *Store) ListEntries(offset, limit int, defaultOnly bool) ([]Entry, int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.listEntries(offset, limit, defaultOnly, "")
+}
+
+func (s *Store) listEntries(offset, limit int, defaultOnly bool, typeFilter string) ([]Entry, int, error) {
+	var whereParts []string
+	var args []any
+	if defaultOnly {
+		whereParts = append(whereParts, "is_default = 1")
+	}
+	if typeFilter != "" {
+		whereParts = append(whereParts, "type = ?")
+		args = append(args, typeFilter)
+	}
+
+	whereClause := ""
+	if len(whereParts) > 0 {
+		whereClause = "WHERE " + strings.Join(whereParts, " AND ")
+	}
+
+	var total int
+	if err := s.db.QueryRow(
+		fmt.Sprintf("SELECT COUNT(*) FROM brownfield_entries %s", whereClause), args...,
+	).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	effectiveLimit := limit
+	if effectiveLimit <= 0 {
+		effectiveLimit = 10000
+	}
+
+	selectArgs := append(append([]any{}, args...), effectiveLimit, offset)
+	rows, err := s.db.Query(fmt.Sprintf(`
+		SELECT rowid, type, key, name, COALESCE(desc, ''), COALESCE(path, ''), is_default, registered_at
+		FROM brownfield_entries %s
+		ORDER BY rowid ASC
+		LIMIT ? OFFSET ?
+	`, whereClause), selectArgs...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var entries []Entry
+	for rows.Next() {
+		var e Entry
+		if err := rows.Scan(&e.RowID, &e.Type, &e.Key, &e.Name, &e.Desc, &e.Path, &e.IsDefault, &e.RegisteredAt); err != nil {
+			return nil, 0, fmt.Errorf("scan entry: %w", err)
+		}
+		entries = append(entries, e)
+	}
+	return entries, total, rows.Err()
+}
+
+// List returns repos with pagination. If defaultOnly is true, returns only defaults.
+func (s *Store) List(offset, limit int, defaultOnly bool) ([]Repo, int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	entries, total, err := s.listEntries(offset, limit, defaultOnly, "repo")
+	if err != nil {
+		return nil, 0, err
+	}
+	repos := make([]Repo, len(entries))
+	for i, e := range entries {
+		repos[i] = Repo{
+			RowID:        e.RowID,
+			Path:         e.Key,
+			Name:         e.Name,
+			Desc:         e.Desc,
+			IsDefault:    e.IsDefault,
+			RegisteredAt: e.RegisteredAt,
+		}
+	}
+	return repos, total, nil
+}
+
+// UpdateDefault toggles the is_default flag for a repo by path.
+func (s *Store) UpdateDefault(path string, isDefault bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	res, err := s.db.Exec("UPDATE brownfield_entries SET is_default = ? WHERE type = 'repo' AND key = ?", isDefault, path)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("repo not found: %s", path)
+	}
+	return nil
+}
+
+// SetDefaultsByRowIDs clears all defaults and sets the given rowids as default.
+// Works across both repo and mcp entries in the unified table.
+func (s *Store) SetDefaultsByRowIDs(ids []int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Validate all IDs exist before mutating
+	for _, id := range ids {
+		var exists int
+		if err := tx.QueryRow("SELECT 1 FROM brownfield_entries WHERE rowid = ?", id).Scan(&exists); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("rowid %d does not exist", id)
+			}
+			return fmt.Errorf("validate rowid %d: %w", id, err)
+		}
+	}
+
+	if _, err := tx.Exec("UPDATE brownfield_entries SET is_default = 0"); err != nil {
+		return err
+	}
+	if len(ids) > 0 {
+		placeholders := make([]string, len(ids))
+		args := make([]interface{}, len(ids))
+		for i, id := range ids {
+			placeholders[i] = "?"
+			args[i] = id
+		}
+		q := fmt.Sprintf("UPDATE brownfield_entries SET is_default = 1 WHERE rowid IN (%s)", strings.Join(placeholders, ","))
+		if _, err := tx.Exec(q, args...); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// UpdateDesc updates the description for a repo by path.
+func (s *Store) UpdateDesc(path, desc string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	res, err := s.db.Exec("UPDATE brownfield_entries SET desc = ? WHERE type = 'repo' AND key = ?", desc, path)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("repo not found: %s", path)
+	}
+	return nil
+}
+
+// DefaultRepos returns all repos with is_default=1.
+func (s *Store) DefaultRepos() ([]Repo, error) {
+	repos, _, err := s.List(0, 0, true)
+	return repos, err
+}
+
+// DefaultEntries returns all entries (repo + mcp) with is_default=1.
+func (s *Store) DefaultEntries() ([]Entry, error) {
+	entries, _, err := s.ListEntries(0, 0, true)
+	return entries, err
+}
+
+// CountMCPs returns the number of MCP entries currently stored.
+func (s *Store) CountMCPs() (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var total int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM brownfield_entries WHERE type = 'mcp'`).Scan(&total); err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
+// ListMCPs returns MCP entries ordered by name.
+func (s *Store) ListMCPs() ([]MCPServerSnapshot, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	entries, _, err := s.listEntries(0, 0, false, "mcp")
+	if err != nil {
+		return nil, err
+	}
+	mcps := make([]MCPServerSnapshot, 0, len(entries))
+	for _, e := range entries {
+		m := MCPServerSnapshot{
+			Name:         e.Name,
+			Desc:         e.Desc,
+			IsDefault:    e.IsDefault,
+			RegisteredAt: e.RegisteredAt,
+		}
+		if e.Path != "" {
+			path := e.Path
+			m.Path = &path
+		}
+		mcps = append(mcps, m)
+	}
+	return mcps, nil
+}
+
+// --- MCP normalization helpers (used by SyncMCPEntries and tests) ---
+
 // snapshotRowsForMCPServers applies scan-time normalization for MCP snapshots.
-// The inclusion basis is `/mcp` visibility only: every visible server with a
-// non-empty trimmed name produces a snapshot row even if tool metadata
-// resolution failed and Desc is blank. If multiple visible entries share the
-// same trimmed server name, the survivor is selected with
-// mcpSnapshotNameCollisionPolicy.description before persistence.
 func snapshotRowsForMCPServers(servers []MCPServer, registeredAt string) []MCPServerSnapshot {
 	normalized := normalizeVisibleMCPServersForSnapshot(servers)
 	snapshots := make([]MCPServerSnapshot, 0, len(normalized))
@@ -560,135 +728,7 @@ func mcpSnapshotTimestamp() string {
 }
 
 func defaultForMCPServer(MCPServer) bool {
-	// MCP scan snapshots currently have no separate default source of truth.
-	// Recompute defaults on each scan as false until one exists.
 	return false
-}
-
-// CountMCPs returns the number of MCP snapshot rows currently stored.
-func (s *Store) CountMCPs() (int, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	var total int
-	if err := s.db.QueryRow(fmt.Sprintf(`SELECT COUNT(*) FROM %s`, mcpSnapshotTableName)).Scan(&total); err != nil {
-		return 0, err
-	}
-	return total, nil
-}
-
-// ReplaceMCPs replaces the MCP snapshot table contents with the provided rows.
-// The transaction always deletes the prior snapshot first, then inserts the
-// current scan rows only. Empty or whitespace-only paths are treated as unknown
-// and stored as NULL.
-func (s *Store) ReplaceMCPs(mcps []MCPServerSnapshot) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	type validatedSnapshotRow struct {
-		name         string
-		path         any
-		desc         string
-		isDefault    bool
-		registeredAt string
-	}
-
-	rows := make([]validatedSnapshotRow, 0, len(mcps))
-	for _, m := range mcps {
-		name, desc, registeredAt, err := validateMCPServerSnapshotRow(m)
-		if err != nil {
-			return err
-		}
-		rows = append(rows, validatedSnapshotRow{
-			name:         name,
-			path:         normalizeOptionalPath(m.Path),
-			desc:         desc,
-			isDefault:    m.IsDefault,
-			registeredAt: registeredAt,
-		})
-	}
-
-	tx, err := s.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	if _, err := tx.Exec(fmt.Sprintf(`DELETE FROM %s`, mcpSnapshotTableName)); err != nil {
-		return err
-	}
-
-	stmt, err := tx.Prepare(fmt.Sprintf(`
-		INSERT INTO %s (name, path, desc, is_default, registered_at)
-		VALUES (?, ?, ?, ?, ?)
-	`, mcpSnapshotTableName))
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
-	for _, row := range rows {
-		if _, err := stmt.Exec(row.name, row.path, row.desc, row.isDefault, row.registeredAt); err != nil {
-			return fmt.Errorf("register mcp %s: %w", row.name, err)
-		}
-	}
-
-	return tx.Commit()
-}
-
-func validateMCPServerSnapshotRow(row MCPServerSnapshot) (string, string, string, error) {
-	name := strings.TrimSpace(row.Name)
-	if name == "" {
-		return "", "", "", fmt.Errorf("mcp name is required")
-	}
-
-	desc := strings.TrimSpace(row.Desc)
-	if desc == "" {
-		return "", "", "", fmt.Errorf("mcp desc is required for %s", name)
-	}
-
-	registeredAt := strings.TrimSpace(row.RegisteredAt)
-	if registeredAt == "" {
-		return "", "", "", fmt.Errorf("mcp registered_at is required for %s", name)
-	}
-
-	return name, desc, registeredAt, nil
-}
-
-// ListMCPs returns the latest MCP scan snapshot ordered by name.
-func (s *Store) ListMCPs() ([]MCPServerSnapshot, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	rows, err := s.db.Query(`
-		SELECT name, path, desc, is_default, registered_at
-		FROM mcp_server_snapshot
-		ORDER BY name ASC
-	`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var mcps []MCPServerSnapshot
-	for rows.Next() {
-		var (
-			m      MCPServerSnapshot
-			dbPath sql.NullString
-		)
-		if err := rows.Scan(&m.Name, &dbPath, &m.Desc, &m.IsDefault, &m.RegisteredAt); err != nil {
-			return nil, fmt.Errorf("scan mcp row: %w", err)
-		}
-		if dbPath.Valid {
-			path := dbPath.String
-			m.Path = &path
-		}
-		mcps = append(mcps, m)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return mcps, nil
 }
 
 func normalizeOptionalPath(path *string) any {
@@ -702,10 +742,6 @@ func normalizeOptionalPath(path *string) any {
 	return trimmed
 }
 
-// approvedSnapshotPath persists only ontology-approved MCP path metadata.
-// Today the only approved source is MCPServer.Path as populated from explicit
-// runtime metadata (for example an absolute transport command path). When that
-// metadata is missing or unresolved, the snapshot stores SQL NULL.
 func approvedSnapshotPath(server MCPServer) *string {
 	path := strings.TrimSpace(server.Path)
 	if path == "" {
@@ -714,9 +750,6 @@ func approvedSnapshotPath(server MCPServer) *string {
 	return &path
 }
 
-// normalizeMCPDescription applies the brownfield MCP description ontology:
-// use resolved tool metadata verbatim after trimming, otherwise emit the exact
-// deterministic unresolved fallback format expected by external evaluators.
 func normalizeMCPDescription(name, desc string) string {
 	trimmedDesc := strings.TrimSpace(desc)
 	if trimmedDesc != "" {
@@ -729,127 +762,8 @@ func normalizeMCPDescription(name, desc string) string {
 	return fmt.Sprintf(unresolvedMCPDescriptionFormat, trimmedName)
 }
 
-// List returns repos with pagination. If defaultOnly is true, returns only defaults.
-func (s *Store) List(offset, limit int, defaultOnly bool) ([]Repo, int, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	where := ""
-	if defaultOnly {
-		where = "WHERE is_default = 1"
-	}
-
-	var total int
-	err := s.db.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM brownfield_repos %s", where)).Scan(&total)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	q := fmt.Sprintf(`
-		SELECT rowid, path, name, COALESCE(desc, ''), is_default, registered_at
-		FROM brownfield_repos %s
-		ORDER BY rowid ASC
-		LIMIT ? OFFSET ?
-	`, where)
-
-	effectiveLimit := limit
-	if effectiveLimit <= 0 {
-		effectiveLimit = 10000
-	}
-
-	rows, err := s.db.Query(q, effectiveLimit, offset)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer rows.Close()
-
-	var repos []Repo
-	for rows.Next() {
-		var r Repo
-		if err := rows.Scan(&r.RowID, &r.Path, &r.Name, &r.Desc, &r.IsDefault, &r.RegisteredAt); err != nil {
-			return nil, 0, fmt.Errorf("scan row: %w", err)
-		}
-		repos = append(repos, r)
-	}
-	return repos, total, rows.Err()
-}
-
-// UpdateDefault toggles the is_default flag for a repo by path.
-func (s *Store) UpdateDefault(path string, isDefault bool) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	res, err := s.db.Exec("UPDATE brownfield_repos SET is_default = ? WHERE path = ?", isDefault, path)
-	if err != nil {
-		return err
-	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
-		return fmt.Errorf("repo not found: %s", path)
-	}
-	return nil
-}
-
-// SetDefaultsByRowIDs clears all defaults and sets the given rowids as default.
-func (s *Store) SetDefaultsByRowIDs(ids []int64) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	tx, err := s.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	// Validate all IDs exist before mutating
-	for _, id := range ids {
-		var exists int
-		if err := tx.QueryRow("SELECT 1 FROM brownfield_repos WHERE rowid = ?", id).Scan(&exists); err != nil {
-			return fmt.Errorf("rowid %d does not exist", id)
-		}
-	}
-
-	if _, err := tx.Exec("UPDATE brownfield_repos SET is_default = 0"); err != nil {
-		return err
-	}
-	if len(ids) > 0 {
-		placeholders := make([]string, len(ids))
-		args := make([]interface{}, len(ids))
-		for i, id := range ids {
-			placeholders[i] = "?"
-			args[i] = id
-		}
-		q := fmt.Sprintf("UPDATE brownfield_repos SET is_default = 1 WHERE rowid IN (%s)", strings.Join(placeholders, ","))
-		if _, err := tx.Exec(q, args...); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
-}
-
-// UpdateDesc updates the description for a repo by path.
-func (s *Store) UpdateDesc(path, desc string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	res, err := s.db.Exec("UPDATE brownfield_repos SET desc = ? WHERE path = ?", desc, path)
-	if err != nil {
-		return err
-	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
-		return fmt.Errorf("repo not found: %s", path)
-	}
-	return nil
-}
-
-// DefaultRepos returns all repos with is_default=1.
-// Returns an empty slice (not error) if no defaults are set.
-func (s *Store) DefaultRepos() ([]Repo, error) {
-	repos, _, err := s.List(0, 0, true)
-	return repos, err
-}
-
 // OpenStoreAt opens an existing brownfield SQLite database at the given path
-// for read-only queries. Unlike NewStore, it skips DDL initialization and
-// opens in read-only mode. Callers must verify the file exists before calling.
+// for read-only queries.
 func OpenStoreAt(dbPath string) (*Store, error) {
 	db, err := sql.Open("sqlite", dbPath+"?_pragma=journal_mode(wal)&mode=ro")
 	if err != nil {

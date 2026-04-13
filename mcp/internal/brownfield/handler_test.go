@@ -417,8 +417,8 @@ func TestHandlerScanStoresUnknownMCPPathAsNull(t *testing.T) {
 	var storedPath sql.NullString
 	if err := s.db.QueryRow(`
 		SELECT path
-		FROM mcp_server_snapshot
-		WHERE name = ?
+		FROM brownfield_entries
+		WHERE type = 'mcp' AND key = ?
 	`, "alpha").Scan(&storedPath); err != nil {
 		t.Fatalf("select stored mcp path: %v", err)
 	}
@@ -555,8 +555,8 @@ func TestHandlerScanRescanRemovesStaleMCPRows(t *testing.T) {
 	var staleCount int
 	if err := s.db.QueryRow(`
 		SELECT COUNT(*)
-		FROM mcp_server_snapshot
-		WHERE name IN ('alpha', 'gamma')
+		FROM brownfield_entries
+		WHERE type = 'mcp' AND key IN ('alpha', 'gamma')
 	`).Scan(&staleCount); err != nil {
 		t.Fatalf("count stale mcps after rescan: %v", err)
 	}
@@ -612,7 +612,7 @@ func TestHandlerScanRescanToEmptyRemovesAllMCPRows(t *testing.T) {
 	var snapshotRows int
 	if err := s.db.QueryRow(`
 		SELECT COUNT(*)
-		FROM mcp_server_snapshot
+		FROM brownfield_entries WHERE type = 'mcp'
 	`).Scan(&snapshotRows); err != nil {
 		t.Fatalf("count raw snapshot rows after empty rescan: %v", err)
 	}
@@ -638,7 +638,7 @@ func TestHandlerScanSnapshotMatchesDeduplicatedVisibleNameSet(t *testing.T) {
 		},
 	})
 
-	if _, err := s.ReplaceMCPsSnapshot([]MCPServer{
+	if _, err := s.SyncMCPEntries([]MCPServer{
 		{Name: "stale-a", Desc: ""},
 		{Name: "stale-b", Desc: ""},
 	}); err != nil {
@@ -656,7 +656,7 @@ func TestHandlerScanSnapshotMatchesDeduplicatedVisibleNameSet(t *testing.T) {
 	assertRuntimeSQLiteSnapshotDefaultsAllFalse(t, s)
 }
 
-func TestHandlerScanMigratesLegacyMCPSnapshotSchemaBeforeSnapshotWrite(t *testing.T) {
+func TestHandlerScanMigratesLegacySchemaBeforeScan(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "legacy-handler.db")
 	db, err := sql.Open("sqlite", dbPath)
@@ -685,6 +685,9 @@ func TestHandlerScanMigratesLegacyMCPSnapshotSchemaBeforeSnapshotWrite(t *testin
 	}
 
 	s := &Store{db: db}
+	if err := s.initialize(); err != nil {
+		t.Fatalf("initialize: %v", err)
+	}
 	SetStoreForTest(s)
 	t.Cleanup(func() { SetStoreForTest(nil) })
 
@@ -710,9 +713,13 @@ func TestHandlerScanMigratesLegacyMCPSnapshotSchemaBeforeSnapshotWrite(t *testin
 		t.Fatal(err)
 	}
 
-	check := runtimeSQLiteMCPSnapshotCheck(t, s)
-	if !check.SchemaOK {
-		t.Fatal("expected RuntimeSQLiteMCPSnapshotCheck().SchemaOK after migrated scan")
+	// Entries table should exist after migration
+	entriesExists, err := s.SQLiteTableExists(entriesTableName)
+	if err != nil {
+		t.Fatalf("SQLiteTableExists: %v", err)
+	}
+	if !entriesExists {
+		t.Fatal("expected brownfield_entries table after migration")
 	}
 
 	mcps, err := s.ListMCPs()
@@ -726,7 +733,7 @@ func TestHandlerScanMigratesLegacyMCPSnapshotSchemaBeforeSnapshotWrite(t *testin
 		t.Fatalf("mcps[0].Name = %q, want alpha", mcps[0].Name)
 	}
 	if mcps[0].Path != nil {
-		t.Fatalf("mcps[0].Path = %v, want nil after NULL-path migration write", mcps[0].Path)
+		t.Fatalf("mcps[0].Path = %v, want nil", mcps[0].Path)
 	}
 }
 
@@ -927,7 +934,7 @@ func TestHandlerStoreNotInitialized(t *testing.T) {
 	}
 }
 
-func TestInitStoreCreatesRuntimeMCPSnapshotSchema(t *testing.T) {
+func TestInitStoreCreatesEntriesTable(t *testing.T) {
 	resetStoreSingletonForTest(t)
 
 	home := t.TempDir()
@@ -962,35 +969,14 @@ func TestInitStoreCreatesRuntimeMCPSnapshotSchema(t *testing.T) {
 	}
 	defer runtimeStore.Close()
 
-	check := runtimeSQLiteMCPSnapshotCheck(t, runtimeStore)
-	if !check.SchemaOK {
-		t.Fatal("expected RuntimeSQLiteMCPSnapshotCheck().SchemaOK for runtime sqlite store")
-	}
+	assertRuntimeSQLiteTableExists(t, runtimeStore, entriesTableName)
 
-	metadata := check.Metadata
+	metadata := runtimeSQLiteTableMetadata(t, runtimeStore, entriesTableName)
 	assertRuntimeSQLiteMetadataUsesDatabasePath(t, metadata, runtimeDBPath)
-	assertRuntimeSQLiteTableExists(t, runtimeStore, "brownfield_repos")
-	assertRuntimeSQLiteTableExists(t, runtimeStore, mcpSnapshotTableName)
-	shape := check.Shape
-	if !shape.TableExists {
-		t.Fatalf("expected detailed runtime schema check to see %q", mcpSnapshotTableName)
-	}
-	if !shape.NameColumnPrimaryKey {
-		t.Fatal("expected detailed runtime schema check to keep name as PRIMARY KEY")
-	}
-	if !shape.PathColumnNullable {
-		t.Fatal("expected detailed runtime schema check to keep path nullable")
-	}
-	if !shape.MatchesExpectedSchema {
-		t.Fatal("expected detailed runtime schema shape verdict to match expected schema")
-	}
 
 	createSQL := metadata.Table.CreateSQL
-	if !strings.Contains(strings.ToLower(createSQL), "name text not null primary key") {
-		t.Fatalf("expected runtime create SQL to contain name primary key, got %s", createSQL)
-	}
-	if strings.Contains(strings.ToLower(createSQL), "path text not null") {
-		t.Fatalf("expected runtime create SQL to keep path nullable, got %s", createSQL)
+	if !strings.Contains(strings.ToLower(createSQL), "unique(type, key)") {
+		t.Fatalf("expected runtime create SQL to contain UNIQUE(type, key), got %s", createSQL)
 	}
 }
 

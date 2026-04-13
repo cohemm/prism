@@ -119,60 +119,55 @@ func handleScan(ctx context.Context, args map[string]interface{}) (*mcp.CallTool
 	// Register repos first so MCP failures don't block repo registration.
 	_, bulkErr := store.BulkRegister(repos)
 
-	// NOTE: EnsureMCPSnapshotTableSchema and ReplaceMCPsSnapshot use separate
-	// mutex acquisitions. This is safe because the MCP server is single-process
-	// and scan requests are serialized. If concurrent scans are added later,
-	// these should be combined into a single transaction.
-	var (
-		storedMCPs []MCPServerSnapshot
-		mcpErr     error
-	)
-	if err := store.EnsureMCPSnapshotTableSchema(); err != nil {
-		mcpErr = fmt.Errorf("mcp snapshot migration: %w", err)
+	var mcpErr error
+	servers, discoverErr := discoverMCPServers(ctx)
+	if discoverErr != nil {
+		mcpErr = fmt.Errorf("mcp discovery: %w", discoverErr)
 	}
-	if mcpErr == nil {
-		servers, discoverErr := discoverMCPServers(ctx)
-		if discoverErr != nil {
-			mcpErr = fmt.Errorf("mcp discovery: %w", discoverErr)
+	// On complete failure (error + no servers), preserve existing entries.
+	// On partial success or full success, sync entries with current results.
+	if discoverErr == nil || len(servers) > 0 {
+		if _, err := store.SyncMCPEntries(servers); err != nil {
+			mcpErr = fmt.Errorf("mcp sync: %w", err)
 		}
-		// On complete failure (error + no servers), preserve existing snapshot.
-		// On partial success or full success, replace snapshot with current results.
-		if discoverErr == nil || len(servers) > 0 {
-			if _, err := store.ReplaceMCPsSnapshot(servers); err != nil {
-				mcpErr = fmt.Errorf("mcp snapshot sync: %w", err)
-			}
-		}
-		storedMCPs, _ = store.ListMCPs()
 	}
 
-	// Fetch all repos and MCP snapshots for combined listing
-	allRepos, _, listErr := store.List(0, 0, false)
+	// Fetch all entries (repo + mcp) with unified numbering
+	allEntries, _, listErr := store.ListEntries(0, 0, false)
 	if listErr != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("list after scan failed: %v", listErr)), nil
 	}
 
-	// Build list: repos with rowid (selectable for set_defaults), MCPs separately
-	var lines []string
-	lines = append(lines, fmt.Sprintf("Scan complete. %d repositories, %d MCP servers registered.", len(allRepos), len(storedMCPs)), "")
+	// Count by type
+	var repoCount, mcpCount int
+	for _, e := range allEntries {
+		switch e.Type {
+		case "repo":
+			repoCount++
+		case "mcp":
+			mcpCount++
+		}
+	}
 
-	for _, r := range allRepos {
+	// Build unified list with shared rowid numbering
+	var lines []string
+	lines = append(lines, fmt.Sprintf("Scan complete. %d repositories, %d MCP servers registered.", repoCount, mcpCount), "")
+
+	for _, e := range allEntries {
 		marker := ""
-		if r.IsDefault {
+		if e.IsDefault {
 			marker = " *"
 		}
-		lines = append(lines, fmt.Sprintf("%2d. (repo) %s%s", r.RowID, r.Name, marker))
-	}
-	for _, m := range storedMCPs {
-		lines = append(lines, fmt.Sprintf("  - (mcp) %s", m.Name))
+		lines = append(lines, fmt.Sprintf("%2d. (%s) %s%s", e.RowID, e.Type, e.Name, marker))
 	}
 
 	lines = append(lines, "")
 
-	// Collect defaults (repos only — MCPs don't support set_defaults)
+	// Collect defaults (any type)
 	var defaultNames []string
-	for _, r := range allRepos {
-		if r.IsDefault {
-			defaultNames = append(defaultNames, r.Name)
+	for _, e := range allEntries {
+		if e.IsDefault {
+			defaultNames = append(defaultNames, e.Name)
 		}
 	}
 	if len(defaultNames) > 0 {
@@ -245,25 +240,20 @@ func handleQuery(args map[string]interface{}) (*mcp.CallToolResult, error) {
 	limit := intArg(args, "limit", 0)
 	defaultOnly, _ := args["default_only"].(bool)
 
-	repos, total, err := store.List(offset, limit, defaultOnly)
+	entries, total, err := store.ListEntries(offset, limit, defaultOnly)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("query failed: %v", err)), nil
 	}
 
-	var defaults []Repo
-	if defaultOnly {
-		defaults = repos
-	} else {
-		defaults, _, _ = store.List(0, 0, true)
-	}
+	defaultEntries, _, _ := store.ListEntries(0, 0, true)
 
 	result := map[string]interface{}{
 		"action":   "query",
-		"repos":    repos,
+		"entries":  entries,
 		"total":    total,
 		"offset":   offset,
-		"defaults": defaults,
-		"count":    len(repos),
+		"defaults": defaultEntries,
+		"count":    len(entries),
 	}
 	return jsonResult(result)
 }
@@ -320,10 +310,10 @@ func handleSetDefaults(args map[string]interface{}) (*mcp.CallToolResult, error)
 	}
 
 	// Return updated defaults
-	defaults, _, _ := store.List(0, 0, true)
+	defaults, _, _ := store.ListEntries(0, 0, true)
 	var names []string
-	for _, repo := range defaults {
-		names = append(names, repo.Name)
+	for _, entry := range defaults {
+		names = append(names, entry.Name)
 	}
 
 	return mcp.NewToolResultText(fmt.Sprintf(

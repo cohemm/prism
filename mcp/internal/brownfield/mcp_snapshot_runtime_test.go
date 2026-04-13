@@ -17,16 +17,6 @@ func runtimeSQLiteTableMetadata(t *testing.T, s *Store, name string) RuntimeSQLi
 	return metadata
 }
 
-func runtimeSQLiteMCPSnapshotCheck(t *testing.T, s *Store) MCPSnapshotRuntimeSQLiteCheck {
-	t.Helper()
-
-	check, err := s.RuntimeSQLiteMCPSnapshotCheck()
-	if err != nil {
-		t.Fatalf("RuntimeSQLiteMCPSnapshotCheck(): %v", err)
-	}
-	return check
-}
-
 func runtimeSQLiteTableSchema(t *testing.T, s *Store, name string) SQLiteTableSchema {
 	t.Helper()
 	return runtimeSQLiteTableMetadata(t, s, name).Table
@@ -40,17 +30,17 @@ func assertRuntimeSQLiteTableExists(t *testing.T, s *Store, name string) {
 	}
 }
 
-func runtimeSQLiteSnapshotNames(t *testing.T, s *Store) []string {
+func runtimeSQLiteMCPEntryNames(t *testing.T, s *Store) []string {
 	t.Helper()
 
-	metadata := runtimeSQLiteTableMetadata(t, s, mcpSnapshotTableName)
-	rows, err := metadata.DB.Query(`
+	rows, err := s.db.Query(`
 		SELECT name
-		FROM mcp_server_snapshot
+		FROM brownfield_entries
+		WHERE type = 'mcp'
 		ORDER BY name ASC
 	`)
 	if err != nil {
-		t.Fatalf("query runtime snapshot names: %v", err)
+		t.Fatalf("query runtime mcp entry names: %v", err)
 	}
 	defer rows.Close()
 
@@ -58,64 +48,68 @@ func runtimeSQLiteSnapshotNames(t *testing.T, s *Store) []string {
 	for rows.Next() {
 		var name string
 		if err := rows.Scan(&name); err != nil {
-			t.Fatalf("scan runtime snapshot name: %v", err)
+			t.Fatalf("scan runtime mcp entry name: %v", err)
 		}
 		names = append(names, name)
 	}
 	if err := rows.Err(); err != nil {
-		t.Fatalf("iterate runtime snapshot names: %v", err)
+		t.Fatalf("iterate runtime mcp entry names: %v", err)
 	}
 	return names
 }
 
-func assertRuntimeSQLiteSnapshotNames(t *testing.T, s *Store, want []string) {
+func assertRuntimeSQLiteMCPEntryNames(t *testing.T, s *Store, want []string) {
 	t.Helper()
 
-	got := runtimeSQLiteSnapshotNames(t, s)
+	got := runtimeSQLiteMCPEntryNames(t, s)
 	if len(got) != len(want) {
-		t.Fatalf("runtime sqlite snapshot row count = %d, want %d (%v)", len(got), len(want), want)
+		t.Fatalf("runtime mcp entry count = %d, want %d (%v)", len(got), len(want), want)
 	}
 	for i := range want {
 		if got[i] != want[i] {
-			t.Fatalf("runtime sqlite snapshot names = %v, want %v", got, want)
+			t.Fatalf("runtime mcp entry names = %v, want %v", got, want)
 		}
 	}
 
 	var duplicateNames int
-	metadata := runtimeSQLiteTableMetadata(t, s, mcpSnapshotTableName)
-	if err := metadata.DB.QueryRow(`
+	if err := s.db.QueryRow(`
 		SELECT COUNT(*)
 		FROM (
 			SELECT name
-			FROM mcp_server_snapshot
+			FROM brownfield_entries
+			WHERE type = 'mcp'
 			GROUP BY name
 			HAVING COUNT(*) > 1
 		)
 	`).Scan(&duplicateNames); err != nil {
-		t.Fatalf("count duplicate runtime snapshot names: %v", err)
+		t.Fatalf("count duplicate runtime mcp entry names: %v", err)
 	}
 	if duplicateNames != 0 {
-		t.Fatalf("duplicate runtime snapshot names = %d, want 0", duplicateNames)
+		t.Fatalf("duplicate runtime mcp entry names = %d, want 0", duplicateNames)
 	}
 }
 
-func runtimeSQLiteSnapshotRowByName(t *testing.T, s *Store, name string) MCPServerSnapshot {
+// Legacy aliases for tests that haven't been updated yet.
+var (
+	assertRuntimeSQLiteSnapshotNames = assertRuntimeSQLiteMCPEntryNames
+)
+
+func runtimeSQLiteMCPEntryByName(t *testing.T, s *Store, name string) MCPServerSnapshot {
 	t.Helper()
 
-	metadata := runtimeSQLiteTableMetadata(t, s, mcpSnapshotTableName)
 	var (
 		row    MCPServerSnapshot
 		dbPath sql.NullString
 	)
-	if err := metadata.DB.QueryRow(`
+	if err := s.db.QueryRow(`
 		SELECT name, path, desc, is_default, registered_at
-		FROM mcp_server_snapshot
-		WHERE name = ?
+		FROM brownfield_entries
+		WHERE type = 'mcp' AND key = ?
 	`, name).Scan(&row.Name, &dbPath, &row.Desc, &row.IsDefault, &row.RegisteredAt); err != nil {
 		if err == sql.ErrNoRows {
-			t.Fatalf("runtime sqlite snapshot row %q not found", name)
+			t.Fatalf("runtime mcp entry %q not found", name)
 		}
-		t.Fatalf("query runtime snapshot row %q: %v", name, err)
+		t.Fatalf("query runtime mcp entry %q: %v", name, err)
 	}
 	if dbPath.Valid {
 		p := dbPath.String
@@ -124,17 +118,20 @@ func runtimeSQLiteSnapshotRowByName(t *testing.T, s *Store, name string) MCPServ
 	return row
 }
 
-func assertRuntimeSQLiteSnapshotDefaultsAllFalse(t *testing.T, s *Store) {
+// Legacy alias
+var runtimeSQLiteSnapshotRowByName = runtimeSQLiteMCPEntryByName
+
+func assertRuntimeSQLiteMCPDefaultsAllFalse(t *testing.T, s *Store) {
 	t.Helper()
 
-	metadata := runtimeSQLiteTableMetadata(t, s, mcpSnapshotTableName)
-	rows, err := metadata.DB.Query(`
+	rows, err := s.db.Query(`
 		SELECT name, is_default
-		FROM mcp_server_snapshot
+		FROM brownfield_entries
+		WHERE type = 'mcp'
 		ORDER BY name ASC
 	`)
 	if err != nil {
-		t.Fatalf("query runtime snapshot defaults: %v", err)
+		t.Fatalf("query runtime mcp defaults: %v", err)
 	}
 	defer rows.Close()
 
@@ -145,29 +142,32 @@ func assertRuntimeSQLiteSnapshotDefaultsAllFalse(t *testing.T, s *Store) {
 			isDefault bool
 		)
 		if err := rows.Scan(&name, &isDefault); err != nil {
-			t.Fatalf("scan runtime snapshot default row: %v", err)
+			t.Fatalf("scan runtime mcp default row: %v", err)
 		}
 		rowCount++
 		if isDefault {
-			t.Fatalf("runtime sqlite snapshot row %q has is_default=true, want false when no MCP default source is configured", name)
+			t.Fatalf("runtime mcp entry %q has is_default=true, want false for new MCP entries", name)
 		}
 	}
 	if err := rows.Err(); err != nil {
-		t.Fatalf("iterate runtime snapshot defaults: %v", err)
+		t.Fatalf("iterate runtime mcp defaults: %v", err)
 	}
 }
 
-func assertRuntimeSQLiteSnapshotSharedRegisteredAt(t *testing.T, s *Store, wantCount int) string {
+// Legacy alias
+var assertRuntimeSQLiteSnapshotDefaultsAllFalse = assertRuntimeSQLiteMCPDefaultsAllFalse
+
+func assertRuntimeSQLiteMCPSharedRegisteredAt(t *testing.T, s *Store, wantCount int) string {
 	t.Helper()
 
-	metadata := runtimeSQLiteTableMetadata(t, s, mcpSnapshotTableName)
-	rows, err := metadata.DB.Query(`
+	rows, err := s.db.Query(`
 		SELECT name, registered_at
-		FROM mcp_server_snapshot
+		FROM brownfield_entries
+		WHERE type = 'mcp'
 		ORDER BY name ASC
 	`)
 	if err != nil {
-		t.Fatalf("query runtime snapshot registered_at rows: %v", err)
+		t.Fatalf("query runtime mcp registered_at rows: %v", err)
 	}
 	defer rows.Close()
 
@@ -181,32 +181,35 @@ func assertRuntimeSQLiteSnapshotSharedRegisteredAt(t *testing.T, s *Store, wantC
 			registeredAt string
 		)
 		if err := rows.Scan(&name, &registeredAt); err != nil {
-			t.Fatalf("scan runtime snapshot registered_at row: %v", err)
+			t.Fatalf("scan runtime mcp registered_at row: %v", err)
 		}
 		rowCount++
 		registeredAt = strings.TrimSpace(registeredAt)
 		if registeredAt == "" {
-			t.Fatalf("runtime snapshot row %q missing registered_at", name)
+			t.Fatalf("runtime mcp entry %q missing registered_at", name)
 		}
 		if sharedRegisteredAt == "" {
 			sharedRegisteredAt = registeredAt
 			continue
 		}
 		if registeredAt != sharedRegisteredAt {
-			t.Fatalf("runtime snapshot row %q registered_at = %q, want shared scan timestamp %q", name, registeredAt, sharedRegisteredAt)
+			t.Fatalf("runtime mcp entry %q registered_at = %q, want shared scan timestamp %q", name, registeredAt, sharedRegisteredAt)
 		}
 	}
 	if err := rows.Err(); err != nil {
-		t.Fatalf("iterate runtime snapshot registered_at rows: %v", err)
+		t.Fatalf("iterate runtime mcp registered_at rows: %v", err)
 	}
 	if rowCount != wantCount {
-		t.Fatalf("runtime snapshot registered_at row count = %d, want %d", rowCount, wantCount)
+		t.Fatalf("runtime mcp registered_at row count = %d, want %d", rowCount, wantCount)
 	}
 	if sharedRegisteredAt == "" && wantCount > 0 {
-		t.Fatal("expected non-empty shared runtime snapshot registered_at")
+		t.Fatal("expected non-empty shared runtime mcp registered_at")
 	}
 	return sharedRegisteredAt
 }
+
+// Legacy alias
+var assertRuntimeSQLiteSnapshotSharedRegisteredAt = assertRuntimeSQLiteMCPSharedRegisteredAt
 
 func assertRuntimeSQLiteMetadataUsesDatabasePath(t *testing.T, metadata RuntimeSQLiteTableMetadata, wantPath string) {
 	t.Helper()
