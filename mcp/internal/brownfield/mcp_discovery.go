@@ -27,8 +27,9 @@ type claudeMCPConfig struct {
 }
 
 type claudeMCPServer struct {
-	Command string   `json:"command"`
-	Args    []string `json:"args"`
+	Command string            `json:"command"`
+	Args    []string          `json:"args"`
+	Env     map[string]string `json:"env"`
 }
 
 // DiscoverMCPServers resolves the currently configured MCP servers for the active runtime.
@@ -148,6 +149,7 @@ func readMCPServersFromConfig(path string) ([]MCPServer, error) {
 			VisibilityOK: true,
 			Command:      server.Command,
 			Args:         server.Args,
+			Env:          server.Env,
 		})
 	}
 	return servers, nil
