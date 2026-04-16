@@ -17,8 +17,10 @@ type codexMCPListEntry struct {
 	Name      string `json:"name"`
 	Enabled   bool   `json:"enabled"`
 	Transport struct {
-		Type    string `json:"type"`
-		Command string `json:"command"`
+		Type    string            `json:"type"`
+		Command string            `json:"command"`
+		Args    []string          `json:"args"`
+		Env     map[string]string `json:"env"`
 	} `json:"transport"`
 }
 
@@ -73,6 +75,8 @@ func discoverCodexMCPServers(ctx context.Context) ([]MCPServer, error) {
 			Visible:      entry.Enabled,
 			VisibilityOK: true,
 			Command:      entry.Transport.Command,
+			Args:         entry.Transport.Args,
+			Env:          entry.Transport.Env,
 		})
 	}
 	return servers, nil
