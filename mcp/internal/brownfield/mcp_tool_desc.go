@@ -88,7 +88,7 @@ func resolveMCPServerToolMetadataDescription(ctx context.Context, server MCPServ
 		}
 		sort.Strings(envKeys)
 		for _, k := range envKeys {
-			fullCommand.WriteString(shellQuote(k) + "=" + shellQuote(server.Env[k]) + " ")
+			fullCommand.WriteString(k + "=" + shellQuote(server.Env[k]) + " ")
 		}
 	}
 	fullCommand.WriteString(commandText)
