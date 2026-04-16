@@ -386,23 +386,10 @@ func LoadOntologyScopeText(stateDir string) string {
 				sb.WriteString(fmt.Sprintf("    %s\n", tool))
 			}
 
-		case "mcp_query":
-			sb.WriteString(fmt.Sprintf("- mcp-query: %s: %s\n", src.Server, src.Summary))
-			if len(src.Access.Tools) > 0 {
-				sb.WriteString(fmt.Sprintf("  Tools (read-only): %s\n", strings.Join(src.Access.Tools, ", ")))
-			}
-			if src.Access.Instructions != "" {
-				sb.WriteString(fmt.Sprintf("  Access: %s\n", src.Access.Instructions))
-			}
-			if src.Access.Capabilities != "" {
-				sb.WriteString(fmt.Sprintf("  Capabilities: %s\n", src.Access.Capabilities))
-			}
-			if src.Access.GettingStarted != "" {
-				sb.WriteString(fmt.Sprintf("  Getting started: %s\n", src.Access.GettingStarted))
-			}
-			if src.Access.ErrorHandling != "" {
-				sb.WriteString(fmt.Sprintf("  Error handling: %s\n", src.Access.ErrorHandling))
-			}
+		// mcp_query sources are handled by LoadSpecialistOntologyScopeSections
+		// and rendered in the dedicated "Available MCP Servers" section.
+		// Synthesis uses LoadOntologyScopeText but does not call MCP tools,
+		// so MCP entries are intentionally excluded here.
 
 		case "web":
 			sb.WriteString(fmt.Sprintf("- web: %s: %s — %s\n", src.URL, src.Domain, src.Summary))
