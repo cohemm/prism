@@ -9,7 +9,7 @@ if [ ! -f "$BIN" ]; then
   NEEDS_BUILD=true
 else
   while IFS= read -r f; do
-    if [ "$f" -nt "$BIN" ]; then
+    if [ ! "$BIN" -nt "$f" ]; then
       NEEDS_BUILD=true
       break
     fi
